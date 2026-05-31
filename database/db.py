@@ -325,7 +325,10 @@ async def check_and_trigger_closure(bot: Bot):
         if times:
             async def broadcast_closure_to_all():
                 from keyboards.menu import get_main_menu_keyboard
-                push_text = "📢 <b>Приём заявок завершён</b>\n⏳ До Финала: <b>--:--:--</b>"
+                now = get_moscow_now().replace(tzinfo=None)
+                remaining = times["reg_start"] - now
+                rem_str = str(remaining).split(".")[0]
+                push_text = f"📢 <b>Приём заявок завершён</b>\n⏳ До Финала: <b>{rem_str}</b>"
 
                 async with aiosqlite.connect(DB_PATH) as db:
                     async with db.execute("SELECT user_id FROM users") as cursor:

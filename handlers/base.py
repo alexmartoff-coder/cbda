@@ -181,7 +181,7 @@ async def cmd_leaderboard(message: Message):
             published = await cursor.fetchone()
 
     if winner and published:
-        async with aiosqlite.connect("bot_database.db") as db:
+        async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT username, full_name FROM users WHERE user_id = ?", (winner[1],)) as c:
                 u = await c.fetchone()
                 username = "@" + u[0] if u[0] else u[1]
@@ -226,7 +226,7 @@ async def cmd_refresh(message: Message):
             published = await cursor.fetchone()
 
     if winner and published:
-        async with aiosqlite.connect("bot_database.db") as db:
+        async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT username, full_name FROM users WHERE user_id = ?", (winner[1],)) as c:
                 u = await c.fetchone()
                 username = "@" + u[0] if u[0] else u[1]
