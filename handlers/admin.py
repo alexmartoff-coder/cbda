@@ -114,7 +114,24 @@ async def admin_test_reg_now(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('test_reg_start', ?)", (test_start.isoformat(),))
         await db.commit()
-    await callback.message.answer("🚀 <b>Тест: Регистрация запущена!</b>\nПроверьте главное меню.", parse_mode="HTML")
+
+    # Сразу рассылаем уведомление финалистам
+    from database.db import get_all_finalists
+    from database.db_final import get_final_times
+    from keyboards.menu import get_main_menu_keyboard
+
+    finalists = await get_all_finalists()
+    times = await get_final_times()
+    for fid in finalists:
+        try:
+            kb, _ = await get_main_menu_keyboard(fid)
+            remaining = times["reg_end"] - get_moscow_now().replace(tzinfo=None)
+            rem_str = str(remaining).split(".")[0]
+            msg = f"🔔 <b>Началась регистрация на финал.</b> Завершение регистрации в 19:30 Мск. Не опаздывайте.\n⏳ До закрытия: <b>{rem_str}</b>"
+            await callback.bot.send_message(fid, msg, parse_mode="HTML", reply_markup=kb)
+        except: pass
+
+    await callback.message.answer("🚀 <b>Тест: Регистрация запущена и уведомления разосланы!</b>\nПроверьте главное меню.", parse_mode="HTML")
     await callback.answer()
 
 @router.callback_query(F.data == "admin_test_final_now")
@@ -138,7 +155,11 @@ async def admin_test_finish_now(callback: CallbackQuery):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('test_reg_start', ?)", (test_start.isoformat(),))
         await db.commit()
-    await callback.message.answer("⏰ <b>Тест: Финал завершен!</b>\nТеперь можно рассчитать итоги.", parse_mode="HTML")
+
+    # Сразу публикуем результаты
+    await publish_final_results(callback.bot)
+
+    await callback.message.answer("⏰ <b>Тест: Финал завершен и итоги опубликованы!</b>", parse_mode="HTML")
     await callback.answer()
 
 @router.callback_query(F.data == "admin_test_reset")
@@ -257,8 +278,47 @@ async def admin_winner(message: Message):
     if message.from_user.id != OWNER_ID:
         return
 
-    await message.answer("ℹ️ Здесь будет информация о победителе.\nДля полной выгрузки используйте кнопку выше.",
-                         reply_markup=get_db_download_keyboard())
+    async with aiosqlite.connect(DB_PATH) as db:
+        query = """
+            SELECT w.user_id, w.ticket_number, w.code, w.won_at,
+                   fr.score, fr.total_time, u.username, u.full_name
+            FROM winners w
+            JOIN final_results fr ON w.ticket_number = fr.ticket_number
+            JOIN users u ON w.user_id = u.user_id
+            LIMIT 1
+        """
+        async with db.execute(query) as cursor:
+            winner = await cursor.fetchone()
+
+    if not winner:
+        await message.answer("ℹ️ Победитель ещё не определён.\nДля полной выгрузки используйте кнопку ниже.",
+                             reply_markup=get_db_download_keyboard())
+        return
+
+    uid, t_num, code, won_at, score, total_time, username, full_name = winner
+
+    name = f"@{username}" if username else full_name
+    minutes = int(total_time // 60)
+    seconds = int(total_time % 60)
+    time_str = f"{minutes:02d}:{seconds:02d}"
+
+    # Форматирование даты из БД (Current_timestamp обычно YYYY-MM-DD HH:MM:SS)
+    try:
+        dt = datetime.fromisoformat(won_at.replace(" ", "T"))
+        date_str = dt.strftime("%d.%m.%Y %H:%M")
+    except:
+        date_str = won_at
+
+    text = (
+        f"🏆 <b>Информация о победителе</b>\n\n"
+        f"Победитель: {name}\n"
+        f"Заявка №{t_num:05d}\n"
+        f"Результат: {score}/8 | Время: {time_str}\n"
+        f"Секретный код: <code>{code}</code>\n"
+        f"Дата генерации: {date_str}"
+    )
+
+    await message.answer(text, reply_markup=get_db_download_keyboard(), parse_mode="HTML")
 
 @router.callback_query(F.data == "download_db")
 async def download_db(callback: CallbackQuery):

@@ -84,10 +84,10 @@ async def get_main_menu_keyboard(user_id: int = None):
                 done_count = row[0] if row else 0
 
         progress_text = (
-            f"🏆 <b>ФИНАЛ В РАЗГАРЕ!</b>\n"
+            f"🏆 ФИНАЛ В РАЗГАРЕ!\n"
             f"📈 Зарегистрировано: {stats['registered_tickets']} заявок\n"
             f"✅ Завершено: {stats['finished_tickets']}\n"
-            f"🎟 <b>Ваши квизы:</b> {done_count}/{len(finalist_tickets)}\n"
+            f"🎟 Ваши квизы: {done_count}/{len(finalist_tickets)}\n"
             f"⏳ До 21:00 МСК: {rem_str}"
         )
 
@@ -110,7 +110,7 @@ async def get_main_menu_keyboard(user_id: int = None):
                 rem_str = str(remaining).split(".")[0]
                 progress_text = f"📢 Выявлено равенство результатов!\n⏳ Мини-квиз через: {rem_str}"
             else:
-                progress_text = "🔥 <b>МИНИ-КВИЗ ИДЁТ!</b>"
+                progress_text = "🔥 МИНИ-КВИЗ ИДЁТ!"
 
             mini_tickets = await get_user_mini_quiz_tickets(user_id)
             if mini_tickets:
@@ -124,7 +124,7 @@ async def get_main_menu_keyboard(user_id: int = None):
             elif now < times["reg_end"]:
                 remaining = times["reg_end"] - now
                 rem_str = str(remaining).split(".")[0]
-                progress_text = f"🏆 <b>РЕГИСТРАЦИЯ В ФИНАЛ ОТКРЫТА!</b>\n⏳ До закрытия: {rem_str}"
+                progress_text = f"🏆 РЕГИСТРАЦИЯ В ФИНАЛ ОТКРЫТА!\n⏳ До закрытия: {rem_str}"
             else:
                 progress_text = "📢 Приём заявок завершён\n⏳ До Финала: 00:00:00"
         else:
