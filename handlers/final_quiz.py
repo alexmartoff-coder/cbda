@@ -228,8 +228,9 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
             if times:
                 from utils.time_utils import get_moscow_now
                 now = get_moscow_now().replace(tzinfo=None)
-                if now >= times["reg_end"]:
-                    # Регистрация закрыта и все прошли - публикуем не дожидаясь 21:00
+                # Публикуем СРАЗУ, если регистрация закрыта (все зарегистрированные прошли)
+                # ИЛИ если это тест
+                if now >= times["reg_end"] or times.get("is_test"):
                     from handlers.admin import publish_final_results
                     await publish_final_results(bot)
 
@@ -282,29 +283,13 @@ async def start_schedulers(bot: Bot):
                         except: pass
                     sent_pushes.add(push_key)
 
-                # Пуш о завершении финала (final_end)
-                push_key_end = f"final_end_{day_key}_{times['final_end'].strftime('%H:%M:%S')}"
+                # Пуш о завершении финала и расчет итогов (final_end)
+                push_key_end = f"final_end_complete_{day_key}_{times['final_end'].strftime('%H:%M:%S')}"
                 if now >= times["final_end"] and push_key_end not in sent_pushes:
-                    await bot.send_message(chat_id=CHANNEL_ID, text="🏁 Финал конкурса завершён! Подводим итоги...")
-
-                    # Проверка на ничью
-                    from database.db_winner import check_for_ties, setup_mini_quiz
-                    ties = await check_for_ties()
-                    if ties:
-                        await setup_mini_quiz(bot, ties)
-                    else:
-                        # Если ничьи нет, публикуем итоги автоматически в 21:00
-                        from handlers.admin import publish_final_results
-                        await publish_final_results(bot)
-
-                    sent_pushes.add(push_key_end)
-
-                # Пуш о принудительной публикации (если кто-то не дошел)
-                push_key_force = f"publish_force_{day_key}_{times['final_end'].strftime('%H:%M:%S')}"
-                if now >= times["final_end"] and push_key_force not in sent_pushes:
+                    # Вызываем единую функцию публикации, которая обработает и Ничью, и Победителя
                     from handlers.admin import publish_final_results
                     await publish_final_results(bot)
-                    sent_pushes.add(push_key_force)
+                    sent_pushes.add(push_key_end)
 
                 # Пуш об аннулировании (reg_end)
                 push_key_cancel = f"reg_end_{day_key}_{times['reg_end'].strftime('%H:%M:%S')}"

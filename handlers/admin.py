@@ -181,47 +181,81 @@ async def admin_test_reset(callback: CallbackQuery):
     await callback.answer()
 
 async def publish_final_results(bot: Bot):
-    from database.db_winner import get_preliminary_winner, get_mini_quiz_winner
-    from database.db_final import get_final_stats
+    from database.db_winner import get_preliminary_winner, get_mini_quiz_winner, check_for_ties, setup_mini_quiz
+    from database.db_final import get_final_stats, get_final_times
     from database.db import DB_PATH, CHANNEL_ID
     import aiosqlite
     import random
+    from utils.time_utils import get_moscow_now
 
-    # Сначала проверяем мини-квиз
-    winner = await get_mini_quiz_winner()
-    if not winner:
-        winner = await get_preliminary_winner()
+    times = await get_final_times()
+    if not times: return
+    now = get_moscow_now().replace(tzinfo=None)
 
-    if not winner: return
+    # Не публикуем до закрытия регистрации (19:30), если не тест
+    if now < times["reg_end"] and not times.get("is_test"):
+        return
 
-    # Проверка на дубликаты публикации
+    # 1. Проверяем, не опубликованы ли уже результаты
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT value FROM settings WHERE key = 'results_published'") as c:
             if await c.fetchone(): return
-        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('results_published', '1')", ())
-        await db.commit()
 
+    # 2. Получаем статистику
     stats = await get_final_stats()
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT username, full_name FROM users WHERE user_id = ?", (winner[1],)) as c:
-            u = await c.fetchone()
-            username = "@" + u[0] if u[0] else u[1]
-
-        win_code = "".join([str(random.randint(0,9)) for _ in range(6)])
-        await db.execute("INSERT OR REPLACE INTO winners (user_id, ticket_number, code) VALUES (?, ?, ?)",
-                         (winner[1], winner[0], win_code))
-        await db.commit()
-
-    minutes = int(winner[3] // 60)
-    seconds = int(winner[3] % 60)
-    time_str = f"{minutes:02d}:{seconds:02d}"
-
     y = stats['total_finalist_tickets']
     x = stats['registered_tickets']
     z = y - x
     k = stats['finished_tickets']
     l = x - k
+
+    # 3. Ищем победителя (сначала мини-квиз)
+    winner = await get_mini_quiz_winner()
+
+    if not winner:
+        # Проверяем на ничью
+        ties = await check_for_ties()
+        if ties:
+            # Проверяем, не объявляли ли мы уже о ничьей
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute("SELECT value FROM settings WHERE key = 'tie_broadcasted'") as c:
+                    if not await c.fetchone():
+                        public_text = (
+                            "🎉 <b>Финал завершён!</b>\n\n"
+                            f"Всего финалистских заявок: {y}\n"
+                            f"Зарегистрировалось (нажали кнопку): {x}\n"
+                            f"Не зарегистрировалось (не нажали до 19:30): {z} = {y} – {x}\n"
+                            f"Успешно прошли финал (полностью или частично): {k}\n"
+                            f"Не завершили прохождение (не уложились в 21:00): {l}\n\n"
+                            "⚠️ <b>Выявлено равенство результатов!</b>\n"
+                            f"Для {len(ties)} заявок будет проведён дополнительный мини-квиз в 21:30 МСК."
+                        )
+                        try: await bot.send_message(CHANNEL_ID, public_text, parse_mode="HTML")
+                        except: pass
+
+                        await setup_mini_quiz(bot, ties)
+                        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('tie_broadcasted', '1')", ())
+                        await db.commit()
+            return
+        else:
+            winner = await get_preliminary_winner()
+
+    if not winner: return
+
+    # 4. Победитель определён - публикуем!
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT username, full_name FROM users WHERE user_id = ?", (winner[1],)) as c:
+            u = await c.fetchone()
+            username = "@" + u[0] if (u and u[0]) else (u[1] if u else "Участник")
+
+        win_code = "".join([str(random.randint(0,9)) for _ in range(6)])
+        await db.execute("INSERT OR REPLACE INTO winners (user_id, ticket_number, code) VALUES (?, ?, ?)",
+                         (winner[1], winner[0], win_code))
+        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('results_published', '1')", ())
+        await db.commit()
+
+    minutes, seconds = int(winner[3] // 60), int(winner[3] % 60)
+    time_str = f"{minutes:02d}:{seconds:02d}"
 
     public_text = (
         "🎉 <b>Финал завершён!</b>\n\n"
@@ -242,6 +276,7 @@ async def publish_final_results(bot: Bot):
     try: await bot.send_message(CHANNEL_ID, public_text, parse_mode="HTML")
     except: pass
 
+    # Рассылка всем
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT user_id FROM users") as cursor:
             all_users = await cursor.fetchall()
