@@ -21,7 +21,7 @@ class TestClosure(unittest.IsolatedAsyncioTestCase):
         mock_close.assert_called_once()
         bot.send_message.assert_called_once()
         args, kwargs = bot.send_message.call_args
-        self.assertIn("СБОР ЗАЯВОК ЗАВЕРШЁН", kwargs['text'])
+        self.assertIn("СБОР БИЛЕТОВ ЗАВЕРШЁН", kwargs['text'])
 
     @patch('database.db.get_paid_tickets_count')
     @patch('database.db.is_collection_closed')

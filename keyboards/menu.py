@@ -45,14 +45,10 @@ async def get_main_menu_keyboard(user_id: int = None):
 
     buttons = []
 
-    if not effective_closed:
-        progress_text = f"📊 До Финала осталось: {display_count} из {TICKET_LIMIT} заявок\n{bar} {percent}%"
+    if not closed:
+        progress_text = f"📊 До розыгрыша осталось: {display_count} из {TICKET_LIMIT} билетов\n{bar} {percent}%"
 
-        used_free = await has_user_used_free_attempt(user_id)
-        if not used_free:
-            buttons.append([KeyboardButton(text="🆓 Бесплатная заявка на участие")])
-
-        buttons.append([KeyboardButton(text="💰 Поддержать (99 ₽)")])
+        buttons.append([KeyboardButton(text="🎁 Играть в Квиз за iPhone 17")])
 
         # Проверяем наличие билетов, ожидающих квиза
         if user_id:
@@ -65,76 +61,15 @@ async def get_main_menu_keyboard(user_id: int = None):
             if pending_count > 0:
                 buttons.append([KeyboardButton(text=f"🚀 Пройти квиз ({pending_count} в очереди)")])
 
-        buttons.append([KeyboardButton(text="📊 Лидерборд")])
-
-    elif await is_final_active():
-        from database.db_final import get_final_stats
-        from datetime import datetime, timedelta
-        stats = await get_final_stats()
-        # times уже получен выше
-        remaining = times["final_end"] - get_moscow_now().replace(tzinfo=None)
-        rem_str = str(remaining).split(".")[0]
-
-        # Личный прогресс
-        finalist_tickets = await get_user_finalist_tickets(user_id)
-        from database.db import DB_PATH
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT COUNT(*) FROM final_results WHERE user_id = ? AND is_mini_quiz = 0", (user_id,)) as c:
-                row = await c.fetchone()
-                done_count = row[0] if row else 0
-
-        progress_text = (
-            f"🏆 <b>ФИНАЛ В РАЗГАРЕ!</b>\n"
-            f"📈 Зарегистрировано: {stats['registered_tickets']} заявок\n"
-            f"✅ Завершено: {stats['finished_tickets']}\n"
-            f"🎟 <b>Ваши квизы:</b> {done_count}/{len(finalist_tickets)}\n"
-            f"⏳ До 21:00 МСК: {rem_str}"
-        )
-
-        if await is_final_registration_open():
-            tickets = await get_user_finalist_tickets(user_id)
-            if tickets and not await has_user_registered_for_final(user_id):
-                buttons.append([KeyboardButton(text="🏆 Войти в Финал")])
+        buttons.append([KeyboardButton(text="🏆 Лидерборд")])
     else:
-        # Проверка на мини-квиз
-        from database.db_winner import get_user_mini_quiz_tickets, check_for_ties
-        ties = await check_for_ties()
-        # times уже получен выше
-        now = get_moscow_now().replace(tzinfo=None)
-
-        if ties and times:
-            from datetime import timedelta
-            mini_start = times["final_end"] + timedelta(minutes=30)
-            if now < mini_start:
-                remaining = mini_start - now
-                rem_str = str(remaining).split(".")[0]
-                progress_text = f"📢 Выявлено равенство результатов!\n⏳ Мини-квиз через: {rem_str}"
-            else:
-                progress_text = "🔥 <b>МИНИ-КВИЗ ИДЁТ!</b>"
-
-            mini_tickets = await get_user_mini_quiz_tickets(user_id)
-            if mini_tickets:
-                buttons.append([KeyboardButton(text="🔥 Начать мини-квиз")])
-        if times:
-            now = get_moscow_now().replace(tzinfo=None)
-            if now < times["reg_start"]:
-                remaining = times["reg_start"] - now
-                rem_str = str(remaining).split(".")[0]
-                progress_text = f"📢 Приём заявок завершён\n⏳ Регистрация в Финал через: {rem_str}"
-            elif now < times["reg_end"]:
-                remaining = times["reg_end"] - now
-                rem_str = str(remaining).split(".")[0]
-                progress_text = f"🏆 <b>РЕГИСТРАЦИЯ В ФИНАЛ ОТКРЫТА!</b>\n⏳ До закрытия: {rem_str}"
-            else:
-                progress_text = "📢 Приём заявок завершён\n⏳ До Финала: 00:00:00"
-        else:
-            progress_text = "📢 Приём заявок завершён\n⏳ До Финала: 00:00:00"
-
-        buttons.append([KeyboardButton(text="📊 Лидерборд финалистов")])
+        progress_text = "📢 Сбор билетов завершён"
+        buttons.append([KeyboardButton(text="🎁 Играть в Квиз за iPhone 17")])
+        buttons.append([KeyboardButton(text="🏆 Лидерборд")])
 
     buttons.extend([
-        [KeyboardButton(text="👤 Мои заявки"), KeyboardButton(text="❓ Правила конкурса")],
-        [KeyboardButton(text="📞 Поддержка"), KeyboardButton(text="🔄 Обновить данные")]
+        [KeyboardButton(text="🎟️ Мои билеты"), KeyboardButton(text="📜 Правила розыгрыша")],
+        [KeyboardButton(text="❓ Поддержка"), KeyboardButton(text="🔄 Обновить данные")]
     ])
 
     if user_id == OWNER_ID:
