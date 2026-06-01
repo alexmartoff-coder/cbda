@@ -32,7 +32,7 @@ async def cmd_start(message: Message):
             parse_mode="HTML",
             disable_web_page_preview=True
         )
-        await message.answer(f"{progress}\n\nИспользуйте меню для навигации.", reply_markup=kb)
+        await message.answer(f"{progress}\n\nИспользуйте меню для навигации.", reply_markup=kb, parse_mode="HTML")
         return
 
     kb, progress = await get_main_menu_keyboard(user_id)
@@ -184,7 +184,7 @@ async def cmd_leaderboard(message: Message):
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT username, full_name FROM users WHERE user_id = ?", (winner[1],)) as c:
                 u = await c.fetchone()
-                username = "@" + u[0] if u[0] else u[1]
+                username = "@" + u[0] if (u and u[0]) else (u[1] if u else "Участник")
 
         minutes = int(winner[3] // 60)
         seconds = int(winner[3] % 60)
@@ -229,7 +229,7 @@ async def cmd_refresh(message: Message):
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT username, full_name FROM users WHERE user_id = ?", (winner[1],)) as c:
                 u = await c.fetchone()
-                username = "@" + u[0] if u[0] else u[1]
+                username = "@" + u[0] if (u and u[0]) else (u[1] if u else "Участник")
 
         minutes = int(winner[3] // 60)
         seconds = int(winner[3] % 60)
