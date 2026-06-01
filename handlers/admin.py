@@ -59,7 +59,8 @@ async def admin_final_management(message: Message):
         [InlineKeyboardButton(text="🏁 Тест: Финал СЕЙЧАС", callback_data="admin_test_final_now")],
         [InlineKeyboardButton(text="⏰ Тест: Завершить Финал", callback_data="admin_test_finish_now")],
         [InlineKeyboardButton(text="❌ Сброс тестов", callback_data="admin_test_reset")],
-        [InlineKeyboardButton(text="🛠 Сид тестовых данных (3495)", callback_data="admin_seed_data")]
+        [InlineKeyboardButton(text="🛠 Сид тестовых данных (3495)", callback_data="admin_seed_data")],
+        [InlineKeyboardButton(text="🛠 Сид тестовых данных (741)", callback_data="admin_seed_data_741")]
     ])
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
@@ -101,8 +102,16 @@ async def admin_calc_final(callback: CallbackQuery):
 async def admin_seed_data_handler(callback: CallbackQuery):
     if callback.from_user.id != OWNER_ID: return
     from tests.seed_test_data import seed_data
-    await seed_data()
+    await seed_data(3495)
     await callback.message.answer("✅ База данных засеяна (3495 заявок)!")
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_seed_data_741")
+async def admin_seed_data_741_handler(callback: CallbackQuery):
+    if callback.from_user.id != OWNER_ID: return
+    from tests.seed_test_data import seed_data
+    await seed_data(741)
+    await callback.message.answer("✅ База данных засеяна (741 заявка)!")
     await callback.answer()
 
 @router.callback_query(F.data == "admin_test_reg_now")

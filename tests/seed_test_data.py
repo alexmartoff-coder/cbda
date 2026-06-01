@@ -3,9 +3,8 @@ import aiosqlite
 import random
 from database.db import DB_PATH, init_db
 
-async def seed_data():
+async def seed_data(target_real_count=3495):
     await init_db()
-    from config import INITIAL_FAKE_TICKETS
     async with aiosqlite.connect(DB_PATH) as db:
         # 1. Create a dummy user for the seed tickets
         dummy_uid = 999999
@@ -16,17 +15,13 @@ async def seed_data():
         async with db.execute("SELECT COUNT(*) FROM tickets WHERE type = 'paid'") as cursor:
             current_real_count = (await cursor.fetchone())[0]
 
-        # Мы хотим, чтобы общее отображаемое число было 3495.
-        # Согласно новой логике max(741 + user_total, real_paid_total),
-        # чтобы увидеть 3495, нам нужно 3495 реальных оплаченных заявок.
-        target_real_count = 3495
         needed = target_real_count - current_real_count
 
         if needed <= 0:
-            print(f"Already have {current_count} paid tickets. No seeding needed.")
+            print(f"Already have {current_real_count} paid tickets. No seeding needed for target {target_real_count}.")
             return
 
-        print(f"Seeding {needed} tickets...")
+        print(f"Seeding {needed} tickets to reach {target_real_count}...")
 
         # 3. Get available ticket numbers
         async with db.execute("SELECT ticket_number FROM available_tickets LIMIT ?", (needed,)) as cursor:
