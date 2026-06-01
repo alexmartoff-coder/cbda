@@ -192,8 +192,14 @@ async def publish_final_results(bot: Bot):
     if not times: return
     now = get_moscow_now().replace(tzinfo=None)
 
-    # Не публикуем до закрытия регистрации (19:30), если не тест
-    if now < times["reg_end"] and not times.get("is_test"):
+    # Проверяем условия для публикации:
+    # 1. Регистрация закрыта (19:30+)
+    # 2. ИЛИ Все финалисты уже зарегистрировались
+    # 3. ИЛИ это тестовый режим
+    stats = await get_final_stats()
+    all_registered = stats['registered_tickets'] >= stats['total_finalist_tickets']
+
+    if not (now >= times["reg_end"] or all_registered or times.get("is_test")):
         return
 
     # 1. Проверяем, не опубликованы ли уже результаты
