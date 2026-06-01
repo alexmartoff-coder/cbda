@@ -21,6 +21,7 @@ from utils.time_utils import get_moscow_now
 router = Router()
 
 active_final_timers = {}
+sent_pushes = set()
 
 async def start_final_quiz_for_ticket(bot: Bot, user_id: int, ticket_number: int, q_count=8, is_mini=False, state: FSMContext = None):
     # Подбираем вопросы
@@ -232,9 +233,10 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
                 # Условия для ранней публикации:
                 # 1. Регистрация закрыта (19:30+)
                 # 2. ИЛИ Все финалисты уже зарегистрировались (X == Y)
-                # 3. ИЛИ это тестовый режим
                 all_registered = stats['registered_tickets'] >= stats['total_finalist_tickets']
 
+                # В обычном режиме ждем либо закрытия регистрации, либо регистрации ВСЕХ.
+                # В тесте позволяем публиковать если ВСЕ КТО ЗАРЕГАЛСЯ прошли (active_sessions == 0).
                 if now >= times["reg_end"] or all_registered or times.get("is_test"):
                     from handlers.admin import publish_final_results
                     await publish_final_results(bot)
@@ -256,7 +258,7 @@ async def start_next_mini_handler(callback: CallbackQuery, state: FSMContext):
     await start_final_quiz_for_ticket(callback.bot, callback.from_user.id, next_t, q_count=5, is_mini=True, state=state)
 
 async def start_schedulers(bot: Bot):
-    sent_pushes = set() # To avoid duplicate pushes in the same loop
+    global sent_pushes
     last_test_start = None
 
     while True:
@@ -274,7 +276,8 @@ async def start_schedulers(bot: Bot):
                     last_test_start = current_test_start
 
                 # Пуш о начале регистрации (reg_start)
-                push_key = f"reg_start_{day_key}_{times['reg_start'].strftime('%H:%M:%S')}"
+                # Генерируем уникальный ключ, зависящий от времени старта (чтобы тест и прод не конфликтовали)
+                push_key = f"reg_start_{day_key}_{times['reg_start'].isoformat()}"
                 if now >= times["reg_start"] and push_key not in sent_pushes:
                     finalists = await get_all_finalists()
                     for fid in finalists:

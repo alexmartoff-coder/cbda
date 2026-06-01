@@ -119,12 +119,17 @@ async def admin_test_reg_now(callback: CallbackQuery):
     if callback.from_user.id != OWNER_ID: return
     from utils.time_utils import get_moscow_now
     now = get_moscow_now().replace(tzinfo=None)
-    test_start = now - timedelta(minutes=1) # Уже идет 1 минуту
+    test_start = now - timedelta(minutes=1) # Already running for 1 min
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('test_reg_start', ?)", (test_start.isoformat(),))
         await db.commit()
 
-    # Сразу рассылаем уведомление финалистам
+    # Trigger push through scheduler logic manually to ensure it's marked
+    from handlers.final_quiz import sent_pushes
+    day_key = now.strftime("%Y-%m-%d")
+    push_key = f"reg_start_{day_key}_{test_start.strftime('%H:%M:%S')}"
+    sent_pushes.add(push_key)
+
     from database.db import get_all_finalists
     from database.db_final import get_final_times
     from keyboards.menu import get_main_menu_keyboard
