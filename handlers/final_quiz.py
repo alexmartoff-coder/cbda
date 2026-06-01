@@ -222,15 +222,20 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
                 active_sessions = (await cursor.fetchone())[0]
 
         if active_sessions == 0:
-            # Все закончили. Проверяем, наступило ли время 19:30 (регистрация закрыта)
-            from database.db_final import get_final_times
+            # Все зарегистрированные закончили.
+            from database.db_final import get_final_times, get_final_stats
             times = await get_final_times()
             if times:
-                from utils.time_utils import get_moscow_now
+                stats = await get_final_stats()
                 now = get_moscow_now().replace(tzinfo=None)
-                # Публикуем СРАЗУ, если регистрация закрыта (все зарегистрированные прошли)
-                # ИЛИ если это тест
-                if now >= times["reg_end"] or times.get("is_test"):
+
+                # Условия для ранней публикации:
+                # 1. Регистрация закрыта (19:30+)
+                # 2. ИЛИ Все финалисты уже зарегистрировались (X == Y)
+                # 3. ИЛИ это тестовый режим
+                all_registered = stats['registered_tickets'] >= stats['total_finalist_tickets']
+
+                if now >= times["reg_end"] or all_registered or times.get("is_test"):
                     from handlers.admin import publish_final_results
                     await publish_final_results(bot)
 
@@ -295,7 +300,6 @@ async def start_schedulers(bot: Bot):
                 push_key_cancel = f"reg_end_{day_key}_{times['reg_end'].strftime('%H:%M:%S')}"
                 if now >= times["reg_end"] and push_key_cancel not in sent_pushes:
                     # Находим всех, кто не зарегистрировался
-                    from database.db import get_all_finalists
                     from database.db_final import has_user_registered_for_final
                     finalists = await get_all_finalists()
                     for fid in finalists:
