@@ -85,6 +85,7 @@ async def get_main_menu_keyboard(user_id: int = None):
 
         progress_text = (
             f"🏆 ФИНАЛ В РАЗГАРЕ!\n"
+            f"Всего финалистов (заявок): {stats['total_finalist_tickets']}\n"
             f"📈 Зарегистрировано: {stats['registered_tickets']} заявок\n"
             f"✅ Завершено: {stats['finished_tickets']}\n"
             f"🎟 Ваши квизы: {done_count}/{len(finalist_tickets)}\n"
