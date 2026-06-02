@@ -235,9 +235,8 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
                 # 2. ИЛИ Все финалисты уже зарегистрировались (X == Y)
                 all_registered = stats['registered_tickets'] >= stats['total_finalist_tickets']
 
-                # В обычном режиме ждем либо закрытия регистрации, либо регистрации ВСЕХ.
-                # В тесте позволяем публиковать если ВСЕ КТО ЗАРЕГАЛСЯ прошли (active_sessions == 0).
-                if now >= times["reg_end"] or all_registered or times.get("is_test"):
+                # Ждем либо закрытия регистрации, либо регистрации ВСЕХ (даже в тесте).
+                if now >= times["reg_end"] or all_registered:
                     from handlers.admin import publish_final_results
                     await publish_final_results(bot)
 
