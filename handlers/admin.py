@@ -10,7 +10,7 @@ import os
 import aiosqlite
 import asyncio
 import random
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 router = Router()
 
