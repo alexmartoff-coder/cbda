@@ -118,39 +118,24 @@ async def admin_seed_data_741_handler(callback: CallbackQuery):
 async def admin_test_reg_now(callback: CallbackQuery):
     if callback.from_user.id != OWNER_ID: return
 
-    await callback.message.answer("🚀 <b>Тест: Регистрация запущена и уведомления разосланы!</b>\nПроверьте главное меню.", parse_mode="HTML")
+    # Send admin status message first
+    await callback.message.answer("🚀 <b>Тест: Регистрация запущена!</b>\nПодождите несколько секунд до рассылки уведомлений.", parse_mode="HTML")
     await callback.answer()
 
     from utils.time_utils import get_moscow_now
     now = get_moscow_now().replace(tzinfo=None)
     test_start = now - timedelta(minutes=1) # Already running for 1 min
 
-    # Trigger push through scheduler logic manually to ensure it's marked
-    # We do this BEFORE updating the database to avoid race condition with the scheduler
+    # We remove the manual mailing loop and also ensure sent_pushes is NOT marked yet.
+    # This allows the background scheduler to handle the broadcast once, correctly.
     from handlers.final_quiz import sent_pushes
     day_key = now.strftime("%Y-%m-%d")
-    push_key = f"reg_start_{day_key}_{test_start.isoformat()}"
-    sent_pushes.add(push_key)
+    # Clean possible old push keys to ensure re-triggering works in test mode
+    sent_pushes.clear()
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('test_reg_start', ?)", (test_start.isoformat(),))
         await db.commit()
-
-    from database.db import get_all_finalists
-    from database.db_final import get_final_times
-    from keyboards.menu import get_main_menu_keyboard
-
-    finalists = await get_all_finalists()
-    times = await get_final_times()
-    for fid in finalists:
-        try:
-            kb, _ = await get_main_menu_keyboard(fid)
-            remaining = times["reg_end"] - get_moscow_now().replace(tzinfo=None)
-            rem_str = str(remaining).split(".")[0]
-            msg = f"🔔 Началась регистрация на финал. Завершение регистрации в 19:30 Мск. Не опаздывайте.\n⏳ До закрытия: {rem_str}"
-            await callback.bot.send_message(fid, msg, parse_mode="HTML", reply_markup=kb)
-            await asyncio.sleep(0.05)
-        except: pass
 
 @router.callback_query(F.data == "admin_test_final_now")
 async def admin_test_final_now(callback: CallbackQuery):
