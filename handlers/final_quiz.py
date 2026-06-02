@@ -285,7 +285,7 @@ async def start_schedulers(bot: Bot):
                             kb, _ = await get_main_menu_keyboard(fid)
                             remaining = times["reg_end"] - get_moscow_now().replace(tzinfo=None)
                             rem_str = str(remaining).split(".")[0]
-                            msg = f"🔔 <b>Началась регистрация на финал.</b> Завершение регистрации в 19:30 Мск. Не опаздывайте.\n⏳ До закрытия: <b>{rem_str}</b>"
+                            msg = f"🔔 Началась регистрация на финал. Завершение регистрации в 19:30 Мск. Не опаздывайте.\n⏳ До закрытия: {rem_str}"
                             await bot.send_message(fid, msg, parse_mode="HTML", reply_markup=kb)
                             await asyncio.sleep(0.05) # Rate limiting
                         except: pass
@@ -308,7 +308,7 @@ async def start_schedulers(bot: Bot):
                     for fid in finalists:
                         if not await has_user_registered_for_final(fid):
                             try:
-                                await bot.send_message(fid, "⌛ <b>Регистрация завершена.</b>\n\nВы не успели войти в Финал, ваши заявки аннулированы.")
+                                await bot.send_message(fid, "⌛ Регистрация завершена.\n\nВы не успели войти в Финал, ваши заявки аннулированы.")
                                 await asyncio.sleep(0.05) # Rate limiting
                             except: pass
                     sent_pushes.add(push_key_cancel)
