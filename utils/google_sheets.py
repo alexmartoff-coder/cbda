@@ -30,7 +30,7 @@ def _sync_export(data):
 
     # Заголовки
     values = [
-        ["Telegram ID", "Username", "Full Name", "Tickets", "Quiz Score", "Registration", "Last Activity"]
+        ["Telegram ID", "Username", "Full Name", "Total Tickets", "Paid Tickets", "Quiz Score", "Registration Date", "Last Activity"]
     ]
 
     # Данные
