@@ -275,9 +275,11 @@ async def start_schedulers(bot: Bot):
                     last_test_start = current_test_start
 
                 # Пуш о начале регистрации (reg_start)
-                # Генерируем уникальный ключ, зависящий от времени старта (чтобы тест и прод не конфликтовали)
-                push_key = f"reg_start_{day_key}_{times['reg_start'].isoformat()}"
-                if now >= times["reg_start"] and push_key not in sent_pushes:
+                # Ключ теперь не зависит от текущего дня (day_key), только от времени старта
+                push_key = f"reg_start_at_{times['reg_start'].isoformat()}"
+
+                # Добавляем условие, что мы в окне регистрации (чтобы не спамить после финала/в полночь)
+                if times["reg_start"] <= now < times["reg_end"] and push_key not in sent_pushes:
                     finalists = await get_all_finalists()
                     for fid in finalists:
                         try:
@@ -299,8 +301,9 @@ async def start_schedulers(bot: Bot):
                     sent_pushes.add(push_key_end)
 
                 # Пуш об аннулировании (reg_end)
-                push_key_cancel = f"reg_end_{day_key}_{times['reg_end'].strftime('%H:%M:%S')}"
-                if now >= times["reg_end"] and push_key_cancel not in sent_pushes:
+                push_key_cancel = f"reg_end_at_{times['reg_end'].isoformat()}"
+                # Отправляем только в течение 30 минут после закрытия регистрации
+                if times["reg_end"] <= now < (times["reg_end"] + timedelta(minutes=30)) and push_key_cancel not in sent_pushes:
                     # Находим всех, кто не зарегистрировался
                     from database.db_final import has_user_registered_for_final
                     finalists = await get_all_finalists()

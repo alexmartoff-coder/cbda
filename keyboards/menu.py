@@ -129,7 +129,28 @@ async def get_main_menu_keyboard(user_id: int = None):
             else:
                 progress_text = "📢 Приём заявок завершён\n⏳ До Финала: 00:00:00"
         else:
-            progress_text = "📢 Приём заявок завершён\n⏳ До Финала: 00:00:00"
+            # Проверяем, не подведены ли итоги
+            from database.db import DB_PATH
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute("SELECT value FROM settings WHERE key = 'results_published'") as c:
+                    if await c.fetchone():
+                        from database.db_final import get_final_stats
+                        stats = await get_final_stats()
+                        y = stats['total_finalist_tickets']
+                        x = stats['registered_tickets']
+                        z = y - x
+                        k = stats['finished_tickets']
+                        l = x - k
+
+                        progress_text = (
+                            "🎉 ФИНАЛ ЗАВЕРШЁН!\n\n"
+                            f"Всего финалистов (заявок): {y}\n"
+                            f"📈 Зарегистрировано: {x}\n"
+                            f"✅ Завершено: {k}\n"
+                            "🏆 Победитель в канале @mozgo_boy"
+                        )
+                    else:
+                        progress_text = "📢 Приём заявок завершён\n⏳ До Финала: 00:00:00"
 
         buttons.append([KeyboardButton(text="📊 Лидерборд финалистов")])
 
