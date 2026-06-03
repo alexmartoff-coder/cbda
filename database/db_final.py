@@ -47,6 +47,12 @@ async def is_final_registration_open():
     return times["reg_start"] <= now <= times["reg_end"]
 
 async def is_final_active():
+    # Проверяем, не опубликованы ли уже результаты
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT value FROM settings WHERE key = 'results_published'") as cursor:
+            if await cursor.fetchone():
+                return False
+
     times = await get_final_times()
     if not times:
         return False
