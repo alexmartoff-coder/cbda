@@ -17,23 +17,24 @@ async def get_main_menu_keyboard(user_id: int = None):
     # В тестовом режиме считаем, что сбор "закрыт", чтобы видеть меню финала
     effective_closed = closed or is_test
 
+    if not rules_accepted:
+        buttons = [
+            [KeyboardButton(text="📜 Правила розыгрыша")],
+            [KeyboardButton(text="❓ Поддержка")]
+        ]
+        return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True), ""
+
     real_paid_total = await get_paid_tickets_count()
 
     # Логика прогресс-бара:
     # 1. Базовое смещение 741.
-    # 2. Любой юзер всегда видит (Минимум 741) + (Свои заявки).
-    # 3. Как только общих реальных платных заявок становится больше 741,
-    #    счетчик переключается на реальные данные (Real Paid).
+    # 2. Пользователь видит (741 + свой вклад) или (реальный общий итог), смотря что больше.
 
     user_total, user_free = await get_user_ticket_counts(user_id) if user_id else (0, 0)
-    user_paid = user_total - user_free
+    user_tickets = user_total
 
-    # Логика прогресс-бара:
-    # 1. Базовое смещение 741.
-    # 2. Пользователь видит (741 + свой вклад) или (реальный общий итог + свои бесплатные), смотря что больше.
-    # Это гарантирует, что любая заявка (платная или бесплатная) увеличивает счетчик на 1,
-    # и при этом соблюдается "пол" в 741 и переход на реальные данные.
-    display_count = max(INITIAL_FAKE_TICKETS + user_paid, real_paid_total) + user_free
+    real_total = await get_total_tickets_count()
+    display_count = max(INITIAL_FAKE_TICKETS + user_tickets, real_total)
 
     if display_count > TICKET_LIMIT:
         display_count = TICKET_LIMIT
@@ -48,11 +49,7 @@ async def get_main_menu_keyboard(user_id: int = None):
     if not effective_closed:
         progress_text = f"📊 До Финала осталось: {display_count} из {TICKET_LIMIT} заявок\n{bar} {percent}%"
 
-        used_free = await has_user_used_free_attempt(user_id)
-        if not used_free:
-            buttons.append([KeyboardButton(text="🆓 Бесплатная заявка на участие")])
-
-        buttons.append([KeyboardButton(text="💰 Поддержать (99 ₽)")])
+        buttons.append([KeyboardButton(text="🎁 Играть в Квиз за iPhone 17")])
 
         # Проверяем наличие билетов, ожидающих квиза
         if user_id:
@@ -63,9 +60,9 @@ async def get_main_menu_keyboard(user_id: int = None):
                     pending_count = row[0] if row else 0
 
             if pending_count > 0:
-                buttons.append([KeyboardButton(text=f"🚀 Пройти квиз ({pending_count} в очереди)")])
+                buttons.append([KeyboardButton(text=f"🚀 Пройти квиз")])
 
-        buttons.append([KeyboardButton(text="📊 Лидерборд")])
+        buttons.append([KeyboardButton(text="🏆 Лидерборд")])
 
     elif await is_final_active():
         from database.db_final import get_final_stats
@@ -97,6 +94,9 @@ async def get_main_menu_keyboard(user_id: int = None):
             if tickets and not await has_user_registered_for_final(user_id):
                 buttons.append([KeyboardButton(text="🏆 Войти в Финал")])
     else:
+        # Сбор закрыт, но финал еще не начат
+        buttons.append([KeyboardButton(text="🏆 Лидерборд")])
+
         # Проверка на мини-квиз
         from database.db_winner import get_user_mini_quiz_tickets, check_for_ties
         ties = await check_for_ties()
@@ -155,8 +155,8 @@ async def get_main_menu_keyboard(user_id: int = None):
         buttons.append([KeyboardButton(text="📊 Лидерборд финалистов")])
 
     buttons.extend([
-        [KeyboardButton(text="👤 Мои заявки"), KeyboardButton(text="❓ Правила конкурса")],
-        [KeyboardButton(text="📞 Поддержка"), KeyboardButton(text="🔄 Обновить данные")]
+        [KeyboardButton(text="🎟️ Мои билеты"), KeyboardButton(text="📜 Правила розыгрыша")],
+        [KeyboardButton(text="❓ Поддержка"), KeyboardButton(text="🔄 Обновить данные")]
     ])
 
     if user_id == OWNER_ID:
