@@ -1,13 +1,14 @@
 import asyncio
 from keyboards.menu import get_main_menu_keyboard
+from config import TICKET_LIMIT
 
 async def test_progress():
     kb, progress = await get_main_menu_keyboard(228592391)
     print(f"DEBUG: Progress text is: \n{progress}")
-    if "3495" in progress:
-        print("✅ SUCCESS: Progress reflects 3495 tickets.")
+    if f"{TICKET_LIMIT} из {TICKET_LIMIT}" in progress:
+        print("✅ SUCCESS: Progress reflects full tickets.")
     else:
-        print("❌ FAILURE: Progress does NOT reflect 3495 tickets.")
+        print("❌ FAILURE: Progress does NOT reflect full tickets.")
 
 if __name__ == "__main__":
     asyncio.run(test_progress())
