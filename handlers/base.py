@@ -129,17 +129,16 @@ async def cmd_enter_final(message: Message):
         parse_mode="HTML"
     )
 
-@router.message(F.text == "❓ Правила конкурса")
+@router.message(F.text == "📜 Правила розыгрыша")
 async def cmd_rules(message: Message):
     rules_html = (
         "<b>📌 Приложение к правилам для конкурса «iPhone 17 PRO 256 Гб»</b>\n\n"
         "Интеллектуальный конкурс «iPhone 17 PRO 256 Гб»\n"
         "<b>Тематика квиза:</b> компания Apple, её устройства, операционные системы, технологии, история.\n"
         "<b>Приз:</b> iPhone 17 PRO 256 Гб (один экземпляр).\n"
-        "<b>Количество платных заявок для завершения Отборочного Этапа:</b> 3500 (три тысячи пятьсот). Бесплатные заявки не влияют на окончание приёма.\n"
-        "<b>Старт Отборочного этапа:</b> 29 мая 2026 г. в 12:00 МСК.\n"
-        "<b>Окончание Отборочного Этапа:</b> автоматически при достижении 3500 платных заявок.\n"
-        "<b>Финал:</b> следующий календарный день после завершения Отборочного этапа в 19:00 по московскому времени.\n\n"
+        "<b>Количество билетов для завершения сбора:</b> 2500 (две тысячи пятьсот).\n"
+        "<b>Старт конкурса:</b> 20 марта 2026 г.\n"
+        "<b>Окончание сбора:</b> автоматически при достижении 2500 билетов или 10 апреля 2026 г.\n\n"
         "Все остальные условия — в соответствии с Основными правилами интеллектуальных конкурсов, размещённых по ссылке:\n"
         "https://cbda.ru/rules/base\n\n"
         "<b>Организатор:</b> Частное лицо ИНН 470102947100. (самозанятый).\n"
@@ -147,29 +146,19 @@ async def cmd_rules(message: Message):
     )
     await message.answer(rules_html, parse_mode="HTML", disable_web_page_preview=True)
 
-@router.message(F.text == "👤 Мои заявки")
+@router.message(F.text == "🎟️ Мои билеты")
 async def cmd_my_tickets(message: Message):
     apps = await get_user_applications(message.from_user.id)
 
     if not apps:
-        await message.answer("У тебя пока нет заявок. Используй бесплатную попытку в меню!")
+        await message.answer("У тебя пока нет билетов. Нажми «🎁 Играть», чтобы участвовать!")
     else:
-        text = "<b>Твои заявки:</b>\n\n"
+        text = "<b>Твои билеты:</b>\n\n"
         for t_num, status, score in apps:
-            if status == "pending":
-                status_text = "⏳ Ожидает квиза"
-                score_text = ""
-            elif status == "finalist":
-                status_text = "— прошла в Финал! ✅"
-                score_text = f"\nРезультат: {score}/10"
-            else:
-                status_text = "— Не прошла в финал"
-                score_text = f"\nРезультат: {score}/10"
-
-            text += f"🎫 №{t_num:05d} {status_text}{score_text}\n\n"
+            text += f"🎫 №{t_num:05d}\n"
         await message.answer(text, parse_mode="HTML")
 
-@router.message(F.text == "📊 Лидерборд")
+@router.message(F.text == "🏆 Лидерборд")
 @router.message(F.text == "📊 Лидерборд финалистов")
 async def cmd_leaderboard(message: Message):
     from database.db import DB_PATH
