@@ -7,38 +7,6 @@ import logging
 
 payment_router = Router(name="payment_router")
 
-@payment_router.message(F.text == "🆓 Бесплатная заявка на участие")
-async def start_free_attempt(message: Message):
-    user_id = message.from_user.id
-
-    from database.db import has_accepted_rules
-    if not await has_accepted_rules(user_id):
-        await message.answer("Пожалуйста, примите правила конкурса в главном меню (/start) перед участием.")
-        return
-
-    if await is_collection_closed():
-        await message.answer("🎉 Приём заявок завершён!")
-        return
-
-    from database.db import has_user_used_free_attempt
-    if await has_user_used_free_attempt(user_id):
-        await message.answer("Вы уже использовали свою бесплатную попытку.")
-        return
-
-    ticket_num = await issue_ticket(user_id, "base")
-    if ticket_num:
-        await set_quiz_session(user_id, ticket_num, score=0, current_question=0, is_active=True)
-        warning_text = (
-            f"✅ Ваша заявка №{ticket_num:05d} создана.\n\n"
-            "⚠️ <b>Внимание!</b> Когда будете проходить квиз выбирайте время и место чтобы у вас был устойчивый интернет и входящие звонки не мешали прохождению квиза. "
-            "При закрытии окна или выхода из приложения отсутствие ответов будет оцениваться как проигрыш.\n\n"
-            "Готовы пройти квиз?"
-        )
-        await message.answer(warning_text, reply_markup=get_start_quiz_keyboard(), parse_mode="HTML")
-    else:
-        await message.answer("Ошибка при создании заявки.")
-
-@payment_router.message(F.text == "💰 Поддержать (99 ₽)")
 async def start_payment(message: Message):
     from database.db import has_accepted_rules
     if not await has_accepted_rules(message.from_user.id):
@@ -85,17 +53,18 @@ async def successful_payment_handler(message: Message):
         sp.provider_payment_charge_id
     )
 
-    ticket_num = await issue_ticket(user_id, "paid")
+    ticket_num = await issue_ticket(user_id, "base")
     if ticket_num:
         await set_quiz_session(user_id, ticket_num, score=0, current_question=0, is_active=True)
         warning_text = (
-            f"✅ Ваша платная заявка №{ticket_num:05d} создана.\n\n"
+            f"✅ Ваша оплата прошла! Базовый билет №{ticket_num:05d} получен.\n\n"
+            "Пройдите квиз, чтобы получить бонусные билеты.\n\n"
             "⚠️ <b>Внимание!</b> Когда будете проходить квиз выбирайте время и место чтобы у вас был устойчивый интернет и входящие звонки не мешали прохождению квиза. "
             "При закрытии окна или выхода из приложения отсутствие ответов будет оцениваться как проигрыш.\n\n"
             "Готовы пройти квиз?"
         )
         await message.answer(warning_text, reply_markup=get_start_quiz_keyboard(), parse_mode="HTML")
     else:
-        await message.answer("Ошибка при создании платной заявки.")
+        await message.answer("Ошибка при создании заявки.")
 
     await check_and_trigger_closure(message.bot)
