@@ -101,7 +101,7 @@ async def cmd_resume_pending_quiz(message: Message, state: FSMContext):
     user_id = message.from_user.id
     from database.db import DB_PATH
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT ticket_number FROM tickets WHERE user_id = ? AND status = 'pending' LIMIT 1", (user_id,)) as c:
+        async with db.execute("SELECT ticket_number FROM tickets WHERE user_id = ? AND status = 'issued' LIMIT 1", (user_id,)) as c:
             row = await c.fetchone()
             if row:
                 ticket_num = row[0]
@@ -190,35 +190,42 @@ async def finish_quiz_logic(bot: Bot, state: FSMContext, user_id: int):
 
     session = await get_quiz_session(user_id)
     score = session[0] if session else 0
-    t_num = session[3] if session else None
+    base_t_num = session[3] if session else None
 
-    from database.db import DB_PATH
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT type FROM tickets WHERE ticket_number = ?", (t_num,)) as cursor:
-            row = await cursor.fetchone()
-            t_type = row[0] if row else "base"
-
-    threshold = 9 if t_type == "base" else 8
-    is_finalist = score >= threshold
-
-    if is_finalist:
-        status = "finalist"
-        msg = (
-            f"🎉 <b>Поздравляем!</b>\n"
-            f"Заявка №{t_num:05d} прошла в Финал!\n"
-            f"Результат: <b>{score}/10</b>"
-        )
+    bonus_tickets = []
+    if score == 10:
+        bonus_count = 3
+    elif score == 9:
+        bonus_count = 2
+    elif score == 8:
+        bonus_count = 1
     else:
-        status = "failed"
-        msg = (
-            f"К сожалению, заявка №{t_num:05d} не прошла в Финал (<b>{score}/10</b>).\n\n"
-            "Вы можете Поддержать конкурс и получить дополнительную попытку (99 ₽)"
-        )
+        bonus_count = 0
 
-    await update_ticket_result(t_num, status, score)
+    from database.db import issue_ticket
+    for _ in range(bonus_count):
+        t_num = await issue_ticket(user_id, "bonus")
+        if t_num:
+            bonus_tickets.append(f"№{t_num:05d}")
+
+    await update_ticket_result(base_t_num, "completed", score)
     await finish_quiz_session(user_id)
     await state.clear()
 
+    bonus_msg = ""
+    if bonus_tickets:
+        bonus_msg = f"🎁 Тебе начислено {len(bonus_tickets)} бонусных билетов: {', '.join(bonus_tickets)}"
+    else:
+        bonus_msg = "Бонусных билетов не начислено (нужно минимум 8 правильных ответов)."
+
+    msg = (
+        f"🏁 <b>Квиз завершён!</b>\n\n"
+        f"Твой результат: <b>{score}/10</b>\n"
+        f"Твой базовый билет: №{base_t_num:05d}\n"
+        f"{bonus_msg}"
+    )
+
+    await check_and_trigger_closure(bot)
     kb, progress = await get_main_menu_keyboard(user_id)
     await bot.send_message(
         chat_id=user_id,
@@ -226,4 +233,3 @@ async def finish_quiz_logic(bot: Bot, state: FSMContext, user_id: int):
         reply_markup=kb,
         parse_mode="HTML"
     )
-    await check_and_trigger_closure(bot)
