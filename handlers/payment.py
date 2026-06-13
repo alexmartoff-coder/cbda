@@ -7,62 +7,59 @@ import logging
 
 payment_router = Router(name="payment_router")
 
-@payment_router.message(F.text == "🆓 Бесплатная заявка на участие")
-async def start_free_attempt(message: Message):
-    user_id = message.from_user.id
-
-    from database.db import has_accepted_rules
-    if not await has_accepted_rules(user_id):
-        await message.answer("Пожалуйста, примите правила конкурса в главном меню (/start) перед участием.")
-        return
-
-    if await is_collection_closed():
-        await message.answer("🎉 Приём заявок завершён!")
-        return
-
-    from database.db import has_user_used_free_attempt
-    if await has_user_used_free_attempt(user_id):
-        await message.answer("Вы уже использовали свою бесплатную попытку.")
-        return
-
-    ticket_num = await issue_ticket(user_id, "base")
-    if ticket_num:
-        await set_quiz_session(user_id, ticket_num, score=0, current_question=0, is_active=True)
-        warning_text = (
-            f"✅ Ваша заявка №{ticket_num:05d} создана.\n\n"
-            "⚠️ <b>Внимание!</b> Когда будете проходить квиз выбирайте время и место чтобы у вас был устойчивый интернет и входящие звонки не мешали прохождению квиза. "
-            "При закрытии окна или выхода из приложения отсутствие ответов будет оцениваться как проигрыш.\n\n"
-            "Готовы пройти квиз?"
-        )
-        await message.answer(warning_text, reply_markup=get_start_quiz_keyboard(), parse_mode="HTML")
-    else:
-        await message.answer("Ошибка при создании заявки.")
-
-@payment_router.message(F.text == "💰 Поддержать (99 ₽)")
-async def start_payment(message: Message):
+@payment_router.message(F.text == "🎁 Играть в Квиз за iPhone 17")
+async def show_mechanics(message: Message):
     from database.db import has_accepted_rules
     if not await has_accepted_rules(message.from_user.id):
-        await message.answer("Пожалуйста, примите правила конкурса в главном меню (/start) перед участием.")
+        await message.answer("Пожалуйста, примите правила розыгрыша в главном меню (/start) перед участием.")
         return
 
     if await is_collection_closed():
-        await message.answer("🎉 Приём заявок завершён!")
+        await message.answer(
+            "🎉 Сбор билетов завершён досрочно!\n\n"
+            "Мы набрали 2500+ билетов. Спасибо всем участникам!\n\n"
+            "Розыгрыш iPhone 17 состоится в ближайшее время в прямом эфире в канале @mozgo_boy.\n\n"
+            "Следи за обновлениями!",
+            parse_mode="HTML"
+        )
         return
 
-    await message.answer("🧾 Формируем счёт на 99 RUB...")
+    text = (
+        "<b>Как участвовать в розыгрыше iPhone 17?</b>\n\n"
+        "1. Оплати участие — <b>99 ₽</b>\n"
+        "2. Получи <b>1 гарантированный билет</b>\n"
+        "3. Пройди квиз из 10 вопросов и получи до <b>+3 бонусных билета</b>:\n"
+        "— 10 правильных → +3 билета\n"
+        "— 9 правильных → +2 билета\n"
+        "— 8 правильных → +1 билет\n\n"
+        "Чем больше билетов, тем выше шансы!"
+    )
+    from keyboards.menu import get_pay_keyboard
+    await message.answer(text, reply_markup=get_pay_keyboard(), parse_mode="HTML")
+
+@payment_router.callback_query(F.data == "pay_99")
+async def start_payment_callback(callback: CallbackQuery):
+    await callback.answer()
+    message = callback.message
+    user_id = callback.from_user.id
+
+    if await is_collection_closed():
+        await message.answer("🎉 Сбор билетов завершён!")
+        return
 
     try:
-        await message.answer_invoice(
-            title="Поддержка конкурса + попытка",
-            description="Дополнительная попытка в конкурсе iPhone 17 PRO 256 Гб.",
+        await callback.bot.send_invoice(
+            chat_id=user_id,
+            title="Участие в квизе iPhone 17",
+            description="1 базовый билет + бонусы за квиз",
             provider_token=config.YOOKASSA_PROVIDER_TOKEN,
             currency="RUB",
-            prices=[LabeledPrice(label="Поддержка", amount=9900)],
+            prices=[LabeledPrice(label="Участие", amount=9900)],
             payload="ticket_purchase"
         )
     except Exception as e:
         logging.error(f"Invoice error: {e}")
-        await message.answer(f"❌ Ошибка: {e}")
+        await message.answer(f"❌ Ошибка при формировании счёта. Попробуйте позже.")
 
 @payment_router.pre_checkout_query()
 async def pre_checkout_query_handler(pre_checkout_query: PreCheckoutQuery):
@@ -89,13 +86,13 @@ async def successful_payment_handler(message: Message):
     if ticket_num:
         await set_quiz_session(user_id, ticket_num, score=0, current_question=0, is_active=True)
         warning_text = (
-            f"✅ Ваша платная заявка №{ticket_num:05d} создана.\n\n"
-            "⚠️ <b>Внимание!</b> Когда будете проходить квиз выбирайте время и место чтобы у вас был устойчивый интернет и входящие звонки не мешали прохождению квиза. "
-            "При закрытии окна или выхода из приложения отсутствие ответов будет оцениваться как проигрыш.\n\n"
-            "Готовы пройти квиз?"
+            f"Оплата прошла! Твой базовый билет №{ticket_num:05d} получен.\n\n"
+            "⚠️ <b>Внимание!</b> Выбирай время и место, чтобы интернет был устойчивым. "
+            "Отсутствие ответа или закрытие приложения будет засчитано как неправильный ответ.\n\n"
+            "Готов начать квиз за бонусные билеты?"
         )
         await message.answer(warning_text, reply_markup=get_start_quiz_keyboard(), parse_mode="HTML")
     else:
-        await message.answer("Ошибка при создании платной заявки.")
+        await message.answer("Ошибка при создании билета. Обратитесь в поддержку.")
 
     await check_and_trigger_closure(message.bot)

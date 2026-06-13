@@ -48,11 +48,7 @@ async def get_main_menu_keyboard(user_id: int = None):
     if not effective_closed:
         progress_text = f"📊 До Финала осталось: {display_count} из {TICKET_LIMIT} заявок\n{bar} {percent}%"
 
-        used_free = await has_user_used_free_attempt(user_id)
-        if not used_free:
-            buttons.append([KeyboardButton(text="🆓 Бесплатная заявка на участие")])
-
-        buttons.append([KeyboardButton(text="💰 Поддержать (99 ₽)")])
+        buttons.append([KeyboardButton(text="🎁 Играть в Квиз за iPhone 17")])
 
         # Проверяем наличие билетов, ожидающих квиза
         if user_id:
@@ -65,7 +61,7 @@ async def get_main_menu_keyboard(user_id: int = None):
             if pending_count > 0:
                 buttons.append([KeyboardButton(text=f"🚀 Пройти квиз ({pending_count} в очереди)")])
 
-        buttons.append([KeyboardButton(text="📊 Лидерборд")])
+        buttons.append([KeyboardButton(text="🏆 Лидерборд")])
 
     elif await is_final_active():
         from database.db_final import get_final_stats
@@ -90,7 +86,7 @@ async def get_main_menu_keyboard(user_id: int = None):
             f"✅ Завершено: {stats['finished_tickets']}\n"
             f"🎟 Ваши квизы: {done_count}/{len(finalist_tickets)}\n"
             f"⏳ До 21:00 МСК: {rem_str}"
-        )
+        ).replace("<b>", "").replace("</b>", "")
 
         if await is_final_registration_open():
             tickets = await get_user_finalist_tickets(user_id)
@@ -150,13 +146,13 @@ async def get_main_menu_keyboard(user_id: int = None):
                             "🏆 Победитель в канале @mozgo_boy"
                         )
                     else:
-                        progress_text = "📢 Приём заявок завершён\n⏳ До Финала: 00:00:00"
+                        progress_text = "📢 Приём билетов завершён\n⏳ До розыгрыша: 00:00:00"
 
-        buttons.append([KeyboardButton(text="📊 Лидерборд финалистов")])
+        buttons.append([KeyboardButton(text="🏆 Лидерборд")])
 
     buttons.extend([
-        [KeyboardButton(text="👤 Мои заявки"), KeyboardButton(text="❓ Правила конкурса")],
-        [KeyboardButton(text="📞 Поддержка"), KeyboardButton(text="🔄 Обновить данные")]
+        [KeyboardButton(text="🎟️ Мои билеты"), KeyboardButton(text="📜 Правила розыгрыша")],
+        [KeyboardButton(text="❓ Поддержка"), KeyboardButton(text="🔄 Обновить данные")]
     ])
 
     if user_id == OWNER_ID:
@@ -181,6 +177,11 @@ def get_db_download_keyboard():
 def get_start_quiz_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Начать квиз", callback_data="start_quiz")]
+    ])
+
+def get_pay_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Оплатить 99 ₽", callback_data="pay_99")]
     ])
 
 def get_rules_agreement_keyboard():
