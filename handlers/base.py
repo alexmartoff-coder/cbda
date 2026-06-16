@@ -19,7 +19,7 @@ async def cmd_start(message: Message):
 
     if not await has_accepted_rules(user_id):
         agreement_text = (
-            "Добро пожаловать в интеллектуальный конкурс «iPhone 17 PRO 256 Гб»!\n\n"
+            "Добро пожаловать в интеллектуальный конкурс iPhone 17!\n\n"
             "Для участия вам необходимо ознакомиться с правилами.\n\n"
             "«Я ознакомлен с <a href='https://cbda.ru/rules/base'>правилами конкурса</a> и согласен с их условиями, "
             "включая обработку моих данных (Telegram ID, username, результаты) в целях проведения конкурса. "
@@ -38,9 +38,8 @@ async def cmd_start(message: Message):
     kb, progress = await get_main_menu_keyboard(user_id)
 
     await message.answer(
-        f"<b>Добро пожаловать в интеллектуальный конкурс «iPhone 17 PRO 256 Гб»!</b>\n\n"
-        "Каждый участник получает 1 бесплатную заявку на участие.\n"
-        "Вы также можете поддержать конкурс и получить дополнительную попытку (99 ₽).\n\n"
+        f"<b>Добро пожаловать в интеллектуальный конкурс iPhone 17!</b>\n\n"
+        "Каждый платёж даёт 1 гарантированный базовый билет + возможность получить до +3 бонусных билетов за хороший результат в квизе.\n\n"
         f"{progress}",
         reply_markup=kb,
         parse_mode="HTML"
@@ -55,8 +54,7 @@ async def accept_rules_handler(callback: CallbackQuery):
     kb, progress = await get_main_menu_keyboard(user_id)
     await callback.message.answer(
         "<b>Спасибо! Теперь вы можете участвовать в конкурсе.</b>\n\n"
-        "Каждый участник получает 1 бесплатную заявку на участие.\n"
-        "Вы также можете поддержать конкурс и получить дополнительную попытку (99 ₽).\n\n"
+        "Каждый платёж даёт 1 гарантированный базовый билет + возможность получить до +3 бонусных билетов за хороший результат в квизе.\n\n"
         f"{progress}",
         reply_markup=kb,
         parse_mode="HTML"
@@ -129,17 +127,17 @@ async def cmd_enter_final(message: Message):
         parse_mode="HTML"
     )
 
-@router.message(F.text == "❓ Правила конкурса")
+@router.message(F.text == "📜 Правила розыгрыша")
 async def cmd_rules(message: Message):
     rules_html = (
-        "<b>📌 Приложение к правилам для конкурса «iPhone 17 PRO 256 Гб»</b>\n\n"
-        "Интеллектуальный конкурс «iPhone 17 PRO 256 Гб»\n"
+        "<b>📌 Приложение к правилам для конкурса «iPhone 17»</b>\n\n"
+        "Интеллектуальный конкурс «iPhone 17»\n"
         "<b>Тематика квиза:</b> компания Apple, её устройства, операционные системы, технологии, история.\n"
-        "<b>Приз:</b> iPhone 17 PRO 256 Гб (один экземпляр).\n"
-        "<b>Количество платных заявок для завершения Отборочного Этапа:</b> 3500 (три тысячи пятьсот). Бесплатные заявки не влияют на окончание приёма.\n"
-        "<b>Старт Отборочного этапа:</b> 29 мая 2026 г. в 12:00 МСК.\n"
-        "<b>Окончание Отборочного Этапа:</b> автоматически при достижении 3500 платных заявок.\n"
-        "<b>Финал:</b> следующий календарный день после завершения Отборочного этапа в 19:00 по московскому времени.\n\n"
+        "<b>Приз:</b> iPhone 17 (один экземпляр).\n"
+        "<b>Количество билетов для завершения:</b> 2500 (две тысячи пятьсот).\n"
+        "<b>Старт:</b> 20 марта 2026 г.\n"
+        "<b>Окончание:</b> автоматически при достижении 2500 билетов или 10 апреля 2026.\n\n"
+        "Победитель определяется путём честного розыгрыша среди всех выданных билетов на сайте https://www.random.org/.\n\n"
         "Все остальные условия — в соответствии с Основными правилами интеллектуальных конкурсов, размещённых по ссылке:\n"
         "https://cbda.ru/rules/base\n\n"
         "<b>Организатор:</b> Частное лицо ИНН 470102947100. (самозанятый).\n"
@@ -147,26 +145,16 @@ async def cmd_rules(message: Message):
     )
     await message.answer(rules_html, parse_mode="HTML", disable_web_page_preview=True)
 
-@router.message(F.text == "👤 Мои заявки")
+@router.message(F.text == "🎟️ Мои билеты")
 async def cmd_my_tickets(message: Message):
     apps = await get_user_applications(message.from_user.id)
 
     if not apps:
-        await message.answer("У тебя пока нет заявок. Используй бесплатную попытку в меню!")
+        await message.answer("У тебя пока нет билетов. Нажми «🎁 Играть в Квиз за iPhone 17», чтобы получить их!")
     else:
-        text = "<b>Твои заявки:</b>\n\n"
+        text = "<b>Твои билеты:</b>\n\n"
         for t_num, status, score in apps:
-            if status == "pending":
-                status_text = "⏳ Ожидает квиза"
-                score_text = ""
-            elif status == "finalist":
-                status_text = "— прошла в Финал! ✅"
-                score_text = f"\nРезультат: {score}/10"
-            else:
-                status_text = "— Не прошла в финал"
-                score_text = f"\nРезультат: {score}/10"
-
-            text += f"🎫 №{t_num:05d} {status_text}{score_text}\n\n"
+            text += f"🎟️ №{t_num:05d}\n"
         await message.answer(text, parse_mode="HTML")
 
 @router.message(F.text == "📊 Лидерборд")
