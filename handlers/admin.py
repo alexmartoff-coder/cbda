@@ -44,23 +44,17 @@ async def admin_export_google(message: Message):
 @router.message(F.text == "🏁 Управление Финалом")
 async def admin_final_management(message: Message):
     if message.from_user.id != OWNER_ID: return
-    from database.db_final import get_final_stats
-    stats = await get_final_stats()
+    from database.db import get_total_tickets_count
+    total = await get_total_tickets_count()
     text = (
-        f"🏁 <b>Управление Финалом</b>\n\n"
-        f"Всего финалистов (заявок): {stats['total_finalist_tickets']}\n"
-        f"Зарегистрировалось: {stats['registered_tickets']} (юзеров: {stats['registered_users']})\n"
-        f"Завершили прохождение: {stats['finished_tickets']}\n"
+        f"🏁 <b>Управление Розыгрышем</b>\n\n"
+        f"Всего билетов: {total}\n"
     )
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Рассчитать итоги", callback_data="admin_calc_final")],
-        [InlineKeyboardButton(text="🚀 Тест: Регистрация СЕЙЧАС", callback_data="admin_test_reg_now")],
-        [InlineKeyboardButton(text="🏁 Тест: Финал СЕЙЧАС", callback_data="admin_test_final_now")],
-        [InlineKeyboardButton(text="⏰ Тест: Завершить Финал", callback_data="admin_test_finish_now")],
-        [InlineKeyboardButton(text="❌ Сброс тестов", callback_data="admin_test_reset")],
-        [InlineKeyboardButton(text="🛠 Сид тестовых данных (3495)", callback_data="admin_seed_data")],
-        [InlineKeyboardButton(text="🛠 Сид тестовых данных (741)", callback_data="admin_seed_data_741")]
+        [InlineKeyboardButton(text="🛠 Сид тестовых данных (2495)", callback_data="admin_seed_data")],
+        [InlineKeyboardButton(text="🛠 Сид тестовых данных (741)", callback_data="admin_seed_data_741")],
+        [InlineKeyboardButton(text="📥 Скачать БД", callback_data="download_db")]
     ])
     await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
@@ -324,9 +318,8 @@ async def admin_winner(message: Message):
     async with aiosqlite.connect(DB_PATH) as db:
         query = """
             SELECT w.user_id, w.ticket_number, w.code, w.won_at,
-                   fr.score, fr.total_time, u.username, u.full_name
+                   u.username, u.full_name
             FROM winners w
-            JOIN final_results fr ON w.ticket_number = fr.ticket_number
             JOIN users u ON w.user_id = u.user_id
             LIMIT 1
         """
@@ -338,12 +331,9 @@ async def admin_winner(message: Message):
                              reply_markup=get_db_download_keyboard())
         return
 
-    uid, t_num, code, won_at, score, total_time, username, full_name = winner
+    uid, t_num, code, won_at, username, full_name = winner
 
     name = f"@{username}" if username else full_name
-    minutes = int(total_time // 60)
-    seconds = int(total_time % 60)
-    time_str = f"{minutes:02d}:{seconds:02d}"
 
     # Форматирование даты из БД (Current_timestamp обычно YYYY-MM-DD HH:MM:SS)
     try:
@@ -355,8 +345,7 @@ async def admin_winner(message: Message):
     text = (
         f"🏆 <b>Информация о победителе</b>\n\n"
         f"Победитель: {name}\n"
-        f"Заявка №{t_num:05d}\n"
-        f"Результат: {score}/8 | Время: {time_str}\n"
+        f"Билет №{t_num:05d}\n"
         f"Секретный код: <code>{code}</code>\n"
         f"Дата генерации: {date_str}"
     )
