@@ -1,8 +1,9 @@
 import aiosqlite
 import os
+import asyncio
 from datetime import datetime
 from aiogram import Bot
-from config import TICKET_LIMIT, CHANNEL_ID, MAX_TICKET_NUMBER
+from config import TICKET_LIMIT, CHANNEL_ID, MAX_TICKET_NUMBER, CONTEST_DEADLINE
 from utils.time_utils import get_moscow_now
 
 DB_PATH = "bot_database.db"
@@ -30,16 +31,6 @@ async def init_db():
                 FOREIGN KEY(user_id) REFERENCES users(user_id)
             )
         """)
-        # Сессии прохождения финала (пользователь проходит билеты по очереди)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS final_sessions (
-                user_id INTEGER PRIMARY KEY,
-                current_ticket_index INTEGER DEFAULT 0,
-                is_active BOOLEAN DEFAULT 0,
-                start_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(user_id)
-            )
-        """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS user_seen_questions (
                 user_id INTEGER,
@@ -63,27 +54,6 @@ async def init_db():
                 value TEXT
             )
         """)
-        # Регистрация в финале (user_id)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS final_registrations (
-                user_id INTEGER PRIMARY KEY,
-                registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(user_id)
-            )
-        """)
-        # Результаты финала для каждого билета
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS final_results (
-                ticket_number INTEGER PRIMARY KEY,
-                user_id INTEGER,
-                score INTEGER DEFAULT 0,
-                total_time FLOAT DEFAULT 0,
-                finished_at DATETIME,
-                is_mini_quiz BOOLEAN DEFAULT 0,
-                FOREIGN KEY(ticket_number) REFERENCES tickets(ticket_number),
-                FOREIGN KEY(user_id) REFERENCES users(user_id)
-            )
-        """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS payments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,16 +72,6 @@ async def init_db():
             )
         """)
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS system_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                event TEXT,
-                details TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        await db.execute("""
             CREATE TABLE IF NOT EXISTS winners (
                 user_id INTEGER,
                 ticket_number INTEGER PRIMARY KEY,
@@ -120,11 +80,6 @@ async def init_db():
                 FOREIGN KEY(user_id) REFERENCES users(user_id)
             )
         """)
-
-        try:
-            await db.execute("ALTER TABLE users ADD COLUMN accepted_rules BOOLEAN DEFAULT 0")
-        except:
-            pass
 
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('is_closed', '0')")
 
@@ -145,12 +100,12 @@ async def init_db():
 
 async def issue_ticket(user_id, ticket_type):
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT ticket_number FROM available_tickets ORDER BY RANDOM() LIMIT 1") as cursor:
+        async with db.execute("SELECT ticket_number FROM available_tickets ORDER BY ticket_number ASC LIMIT 1") as cursor:
             row = await cursor.fetchone()
             if row:
                 ticket_num = row[0]
                 await db.execute("DELETE FROM available_tickets WHERE ticket_number = ?", (ticket_num,))
-                await db.execute("INSERT INTO tickets (user_id, ticket_number, type, status) VALUES (?, ?, ?, 'pending')",
+                await db.execute("INSERT INTO tickets (user_id, ticket_number, type, status) VALUES (?, ?, ?, 'issued')",
                                  (user_id, ticket_num, ticket_type))
                 await db.commit()
                 return ticket_num
@@ -161,15 +116,9 @@ async def update_ticket_result(ticket_number, status, score):
         await db.execute("UPDATE tickets SET status = ?, score = ? WHERE ticket_number = ?", (status, score, ticket_number))
         await db.commit()
 
-async def has_user_used_free_attempt(user_id):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT COUNT(*) FROM tickets WHERE user_id = ? AND type = 'base'", (user_id,)) as cursor:
-            row = await cursor.fetchone()
-            return row[0] > 0
-
 async def get_user_applications(user_id):
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT ticket_number, status, score FROM tickets WHERE user_id = ? ORDER BY created_at", (user_id,)) as cursor:
+        async with db.execute("SELECT ticket_number, status, score FROM tickets WHERE user_id = ? ORDER BY ticket_number ASC", (user_id,)) as cursor:
             return await cursor.fetchall()
 
 async def add_user(user_id, username, full_name):
@@ -228,28 +177,36 @@ async def get_leaderboard(limit=20):
             SELECT
                 u.username,
                 u.full_name,
-                COUNT(t.id) as finalist_count
+                COUNT(t.id) as total_tickets
             FROM users u
             JOIN tickets t ON u.user_id = t.user_id
-            WHERE t.status = 'finalist'
             GROUP BY u.user_id
-            ORDER BY finalist_count DESC
+            ORDER BY total_tickets DESC
             LIMIT ?
         """, (limit,)) as cursor:
             return await cursor.fetchall()
 
-async def is_collection_closed():
+async def is_collection_closed_flag_only():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT value FROM settings WHERE key = 'is_closed'") as cursor:
             row = await cursor.fetchone()
-            return row[0] == '1'
+            return row[0] == '1' if row else False
+
+async def is_collection_closed():
+    if await is_collection_closed_flag_only():
+        return True
+
+    # Check deadline
+    now = get_moscow_now().replace(tzinfo=None)
+    deadline = datetime.fromisoformat(CONTEST_DEADLINE)
+    if now > deadline:
+        return True
+
+    return False
 
 async def close_collection():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE settings SET value = '1' WHERE key = 'is_closed'")
-        # Сохраняем дату закрытия для расчета даты финала (МСК)
-        now_str = get_moscow_now().replace(tzinfo=None).isoformat()
-        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('closed_at', ?)", (now_str,))
         await db.commit()
 
 async def get_user_seen_question_ids(user_id):
@@ -278,78 +235,40 @@ async def log_payment(user_id, amount, payload, telegram_id, provider_id):
         """, (user_id, amount, payload, telegram_id, provider_id))
         await db.commit()
 
-async def add_system_log(user_id, event, details=None):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            INSERT INTO system_logs (user_id, event, details)
-            VALUES (?, ?, ?)
-        """, (user_id, event, details))
-        await db.commit()
-
 async def get_total_tickets_count():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM tickets") as cursor:
             row = await cursor.fetchone()
-            return row[0]
-
-async def get_paid_tickets_count():
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT COUNT(*) FROM tickets WHERE type = 'paid'") as cursor:
-            row = await cursor.fetchone()
-            return row[0]
-
-async def get_user_ticket_counts(user_id):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT type FROM tickets WHERE user_id = ?", (user_id,)) as cursor:
-            rows = await cursor.fetchall()
-            total = len(rows)
-            free = sum(1 for (t_type,) in rows if t_type == 'base')
-            return total, free
-
-async def get_all_finalists():
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT DISTINCT user_id FROM tickets WHERE status = 'finalist'") as cursor:
-            rows = await cursor.fetchall()
-            return [r[0] for r in rows]
+            return row[0] if row else 0
 
 async def check_and_trigger_closure(bot: Bot):
-    paid_total = await get_paid_tickets_count()
+    total_tickets = await get_total_tickets_count()
+    now = get_moscow_now().replace(tzinfo=None)
+    deadline = datetime.fromisoformat(CONTEST_DEADLINE)
 
-    # Цель - собрать 3500 реальных платных заявок
-    if paid_total >= TICKET_LIMIT and not await is_collection_closed():
+    if (total_tickets >= TICKET_LIMIT or now > deadline) and not await is_collection_closed_flag_only():
         await close_collection()
 
-        # Рассылка ВСЕМ пользователям (в фоне)
-        from database.db_final import get_final_times
-        times = await get_final_times()
-        if times:
-            async def broadcast_closure_to_all():
-                from keyboards.menu import get_main_menu_keyboard
-                now = get_moscow_now().replace(tzinfo=None)
-                remaining = times["reg_start"] - now
-                rem_str = str(remaining).split(".")[0]
-                push_text = f"📢 <b>Приём заявок завершён</b>\n⏳ До Финала: <b>{rem_str}</b>"
+        async def broadcast_closure_to_all():
+            push_text = "📢 <b>Приём заявок завершён!</b>\n\nРезультаты будут подведены в ближайшее время. Следите за обновлениями в канале @mozgo_boy."
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute("SELECT user_id FROM users") as cursor:
+                    all_users = await cursor.fetchall()
 
-                async with aiosqlite.connect(DB_PATH) as db:
-                    async with db.execute("SELECT user_id FROM users") as cursor:
-                        all_users = await cursor.fetchall()
-
-                for (uid,) in all_users:
-                    try:
-                        kb, _ = await get_main_menu_keyboard(uid)
-                        await bot.send_message(uid, push_text, parse_mode="HTML", reply_markup=kb)
-                        await asyncio.sleep(0.05) # Rate limiting
-                    except:
-                        pass
-            import asyncio
-            asyncio.create_task(broadcast_closure_to_all())
+            for (uid,) in all_users:
+                try:
+                    await bot.send_message(uid, push_text, parse_mode="HTML")
+                    await asyncio.sleep(0.05)
+                except:
+                    pass
+        asyncio.create_task(broadcast_closure_to_all())
 
         try:
             text = (
                 "🔥 СБОР ЗАЯВОК ЗАВЕРШЁН!\n\n"
-                "Мы достигли лимита в 3500 заявок.\n"
+                f"Мы достигли лимита в {TICKET_LIMIT} заявок или наступил дедлайн.\n"
                 "Спасибо всем, кто принял участие!\n\n"
-                "Отборочный этап завершен. Скоро начнется Финал."
+                "Розыгрыш состоится в прямом эфире в канале @mozgo_boy."
             )
             await bot.send_message(chat_id=CHANNEL_ID, text=text)
         except Exception as e:
