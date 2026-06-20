@@ -5,9 +5,12 @@ from aiogram import Bot
 from config import TICKET_LIMIT, CHANNEL_ID, MAX_TICKET_NUMBER
 from utils.time_utils import get_moscow_now
 
-DB_PATH = "bot_database.db"
+DB_PATH = "database/bot_database.db"
 
 async def init_db():
+    # Ensure database directory exists
+    os.makedirs("database", exist_ok=True)
+
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -320,7 +323,7 @@ async def check_and_trigger_closure(bot: Bot):
         await close_collection()
 
         # Рассылка ВСЕМ пользователям (в фоне)
-        from database.db_final import get_final_times
+        from db.db_final import get_final_times
         times = await get_final_times()
         if times:
             async def broadcast_closure_to_all():

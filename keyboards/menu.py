@@ -1,16 +1,16 @@
 import aiosqlite
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from database.db import is_collection_closed, has_user_used_free_attempt, get_total_tickets_count, get_paid_tickets_count
-from database.db_final import is_final_registration_open, has_user_registered_for_final, get_user_finalist_tickets, is_final_active
+from db.db import is_collection_closed, has_user_used_free_attempt, get_total_tickets_count, get_paid_tickets_count
+from db.db_final import is_final_registration_open, has_user_registered_for_final, get_user_finalist_tickets, is_final_active
 from config import OWNER_ID, TICKET_LIMIT, INITIAL_FAKE_TICKETS
 from utils.time_utils import get_moscow_now
 
 async def get_main_menu_keyboard(user_id: int = None):
-    from database.db import has_accepted_rules, get_user_ticket_counts
+    from db.db import has_accepted_rules, get_user_ticket_counts
     rules_accepted = await has_accepted_rules(user_id) if user_id else False
     closed = await is_collection_closed()
 
-    from database.db_final import get_final_times
+    from db.db_final import get_final_times
     times = await get_final_times()
     is_test = times.get("is_test", False) if times else False
 
@@ -56,7 +56,7 @@ async def get_main_menu_keyboard(user_id: int = None):
 
         # Проверяем наличие билетов, ожидающих квиза
         if user_id:
-            from database.db import DB_PATH
+            from db.db import DB_PATH
             async with aiosqlite.connect(DB_PATH) as db:
                 async with db.execute("SELECT COUNT(*) FROM tickets WHERE user_id = ? AND status = 'pending'", (user_id,)) as c:
                     row = await c.fetchone()
@@ -68,7 +68,7 @@ async def get_main_menu_keyboard(user_id: int = None):
         buttons.append([KeyboardButton(text="📊 Лидерборд")])
 
     elif await is_final_active():
-        from database.db_final import get_final_stats
+        from db.db_final import get_final_stats
         from datetime import datetime, timedelta
         stats = await get_final_stats()
         # times уже получен выше
@@ -77,7 +77,7 @@ async def get_main_menu_keyboard(user_id: int = None):
 
         # Личный прогресс
         finalist_tickets = await get_user_finalist_tickets(user_id)
-        from database.db import DB_PATH
+        from db.db import DB_PATH
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT COUNT(*) FROM final_results WHERE user_id = ? AND is_mini_quiz = 0", (user_id,)) as c:
                 row = await c.fetchone()
@@ -98,7 +98,7 @@ async def get_main_menu_keyboard(user_id: int = None):
                 buttons.append([KeyboardButton(text="🏆 Войти в Финал")])
     else:
         # Проверка на мини-квиз
-        from database.db_winner import get_user_mini_quiz_tickets, check_for_ties
+        from db.db_winner import get_user_mini_quiz_tickets, check_for_ties
         ties = await check_for_ties()
         # times уже получен выше
         now = get_moscow_now().replace(tzinfo=None)
@@ -130,11 +130,11 @@ async def get_main_menu_keyboard(user_id: int = None):
                 progress_text = "📢 Приём заявок завершён\n⏳ До Финала: 00:00:00"
         else:
             # Проверяем, не подведены ли итоги
-            from database.db import DB_PATH
+            from db.db import DB_PATH
             async with aiosqlite.connect(DB_PATH) as db:
                 async with db.execute("SELECT value FROM settings WHERE key = 'results_published'") as c:
                     if await c.fetchone():
-                        from database.db_final import get_final_stats
+                        from db.db_final import get_final_stats
                         stats = await get_final_stats()
                         y = stats['total_finalist_tickets']
                         x = stats['registered_tickets']

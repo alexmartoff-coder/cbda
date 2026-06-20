@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 import aiosqlite
-from database.db import DB_PATH
+from db.db import DB_PATH
 from utils.time_utils import get_moscow_now
 
 async def get_final_times():

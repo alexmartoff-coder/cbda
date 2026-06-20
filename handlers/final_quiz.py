@@ -2,14 +2,14 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from handlers.quiz_states import QuizStates
-from database.db import (
+from db.db import (
     get_quiz_session, update_quiz_score, update_quiz_question, finish_quiz_session,
     check_and_trigger_closure, add_user, update_ticket_result, get_all_finalists,
     CHANNEL_ID
 )
 from keyboards.menu import get_main_menu_keyboard
 from utils.generator import generate_questions
-from database.db_final import is_final_active, get_final_times
+from db.db_final import is_final_active, get_final_times
 import asyncio
 import time
 import logging
@@ -142,7 +142,7 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
     resp_time = data.get('final_responses_time', 0.0)
     is_mini = data.get("is_mini_quiz", False)
 
-    from database.db import DB_PATH
+    from db.db import DB_PATH
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             INSERT OR REPLACE INTO final_results (ticket_number, user_id, score, total_time, finished_at, is_mini_quiz)
@@ -153,7 +153,7 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
         await db.commit()
 
     if is_mini:
-        from database.db_winner import get_user_mini_quiz_tickets, get_mini_quiz_winner
+        from db.db_winner import get_user_mini_quiz_tickets, get_mini_quiz_winner
         all_mini = await get_user_mini_quiz_tickets(user_id)
         if all_mini:
             next_t = all_mini[0]
@@ -168,7 +168,7 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
         else:
             # Больше нет билетов в мини-квизе у этого юзера.
             # Если это был последний активный мини-квиз во всем боте, публикуем итоги.
-            from database.db import DB_PATH
+            from db.db import DB_PATH
             async with aiosqlite.connect(DB_PATH) as db:
                 # Находим количество незавершенных мини-квизов во всей системе
                 query = """
@@ -186,10 +186,10 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
                 await publish_final_results(bot)
             return
 
-    from database.db_final import get_user_finalist_tickets
+    from db.db_final import get_user_finalist_tickets
     all_tickets = await get_user_finalist_tickets(user_id)
 
-    from database.db import DB_PATH
+    from db.db import DB_PATH
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT current_ticket_index FROM final_sessions WHERE user_id = ?", (user_id,)) as c:
             next_idx = (await c.fetchone())[0]
@@ -210,7 +210,7 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
         asyncio.create_task(wait_and_start())
     else:
         await bot.send_message(user_id, f"✅ Квиз для заявки №{t_num:05d} завершён.\nРезультат: <b>{score}/8</b>\n\n🎉 Поздравляем! Вы прошли Финал для всех своих заявок ({len(all_tickets)} шт.).\nРезультаты будут подведены в ближайшее время.", parse_mode="HTML")
-        from database.db import DB_PATH
+        from db.db import DB_PATH
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("UPDATE final_sessions SET is_active = 0 WHERE user_id = ?", (user_id,))
             await db.commit()
@@ -224,7 +224,7 @@ async def finish_ticket_final(bot: Bot, state: FSMContext, user_id: int):
 
         if active_sessions == 0:
             # Все зарегистрированные закончили.
-            from database.db_final import get_final_times, get_final_stats
+            from db.db_final import get_final_times, get_final_stats
             times = await get_final_times()
             if times:
                 stats = await get_final_stats()
@@ -262,7 +262,7 @@ async def start_schedulers(bot: Bot):
 
     while True:
         try:
-            from database.db_final import get_final_times
+            from db.db_final import get_final_times
             times = await get_final_times()
             if times:
                 now = get_moscow_now().replace(tzinfo=None)
@@ -305,7 +305,7 @@ async def start_schedulers(bot: Bot):
                 # Отправляем только в течение 30 минут после закрытия регистрации
                 if times["reg_end"] <= now < (times["reg_end"] + timedelta(minutes=30)) and push_key_cancel not in sent_pushes:
                     # Находим всех, кто не зарегистрировался
-                    from database.db_final import has_user_registered_for_final
+                    from db.db_final import has_user_registered_for_final
                     finalists = await get_all_finalists()
                     for fid in finalists:
                         if not await has_user_registered_for_final(fid):
@@ -319,14 +319,14 @@ async def start_schedulers(bot: Bot):
                 mini_start = times["final_end"] + timedelta(minutes=30)
                 push_key_mini = f"mini_start_{day_key}_{mini_start.strftime('%H:%M:%S')}"
                 if now >= mini_start and push_key_mini not in sent_pushes:
-                    from database.db_winner import check_for_ties
+                    from db.db_winner import check_for_ties
                     ties = await check_for_ties()
                     if ties:
                         unique_users = list(set([t[1] for t in ties]))
                         for uid in unique_users:
                             try:
                                 # Проверяем, не начал ли он уже мини-квиз
-                                from database.db_winner import get_user_mini_quiz_tickets
+                                from db.db_winner import get_user_mini_quiz_tickets
                                 if await get_user_mini_quiz_tickets(uid):
                                     kb, _ = await get_main_menu_keyboard(uid)
                                     await bot.send_message(uid, "🔔 <b>Начало МИНИ-КВИЗА!</b>\n\nИспользуйте кнопку в меню.", parse_mode="HTML", reply_markup=kb)

@@ -2,8 +2,8 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from config import OWNER_ID
-from database.db_admin import get_all_users_data
-from database.db import DB_PATH
+from db.db_admin import get_all_users_data
+from db.db import DB_PATH
 from keyboards.menu import get_admin_keyboard, get_db_download_keyboard, get_main_menu_keyboard
 from utils.google_sheets import export_to_google_sheets
 import os
@@ -44,7 +44,7 @@ async def admin_export_google(message: Message):
 @router.message(F.text == "🏁 Управление Финалом")
 async def admin_final_management(message: Message):
     if message.from_user.id != OWNER_ID: return
-    from database.db_final import get_final_stats
+    from db.db_final import get_final_stats
     stats = await get_final_stats()
     text = (
         f"🏁 <b>Управление Финалом</b>\n\n"
@@ -67,7 +67,7 @@ async def admin_final_management(message: Message):
 @router.callback_query(F.data == "admin_calc_final")
 async def admin_calc_final(callback: CallbackQuery):
     if callback.from_user.id != OWNER_ID: return
-    from database.db_winner import get_preliminary_winner, check_for_ties
+    from db.db_winner import get_preliminary_winner, check_for_ties
     winner = await get_preliminary_winner()
     ties = await check_for_ties()
 
@@ -77,7 +77,7 @@ async def admin_calc_final(callback: CallbackQuery):
         await callback.message.answer(f"⚠️ <b>Выявлено равенство результатов!</b>\nНужен мини-квиз для {len(ties)} заявок.", parse_mode="HTML")
     else:
         # Победитель определен
-        from database.db import DB_PATH
+        from db.db import DB_PATH
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT username, full_name FROM users WHERE user_id = ?", (winner[1],)) as c:
                 u = await c.fetchone()
@@ -175,9 +175,9 @@ async def admin_test_reset(callback: CallbackQuery):
     await callback.answer()
 
 async def publish_final_results(bot: Bot):
-    from database.db_winner import get_preliminary_winner, get_mini_quiz_winner, check_for_ties, setup_mini_quiz
-    from database.db_final import get_final_stats, get_final_times
-    from database.db import DB_PATH, CHANNEL_ID
+    from db.db_winner import get_preliminary_winner, get_mini_quiz_winner, check_for_ties, setup_mini_quiz
+    from db.db_final import get_final_stats, get_final_times
+    from db.db import DB_PATH, CHANNEL_ID
     import aiosqlite
     import random
     from utils.time_utils import get_moscow_now

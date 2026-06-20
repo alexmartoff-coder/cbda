@@ -1,4 +1,4 @@
-from database.db import (
+from db.db import (
     add_user, get_leaderboard, is_collection_closed, check_and_trigger_closure,
     has_user_used_free_attempt, get_user_applications, issue_ticket, set_quiz_session,
     has_accepted_rules, mark_rules_accepted
@@ -70,7 +70,7 @@ async def accept_rules_handler(callback: CallbackQuery):
 @router.message(F.text == "🔥 Начать мини-квиз")
 async def cmd_start_mini_quiz(message: Message):
     user_id = message.from_user.id
-    from database.db_winner import get_user_mini_quiz_tickets
+    from db.db_winner import get_user_mini_quiz_tickets
     tickets = await get_user_mini_quiz_tickets(user_id)
     if not tickets:
         await message.answer("У вас нет заявок для мини-квиза.")
@@ -90,7 +90,7 @@ async def cmd_start_mini_quiz(message: Message):
 @router.message(F.text == "🏆 Войти в Финал")
 async def cmd_enter_final(message: Message):
     user_id = message.from_user.id
-    from database.db_final import is_final_registration_open, has_user_registered_for_final, get_user_finalist_tickets, register_for_final
+    from db.db_final import is_final_registration_open, has_user_registered_for_final, get_user_finalist_tickets, register_for_final
     import aiosqlite
 
     if not await is_final_registration_open():
@@ -109,7 +109,7 @@ async def cmd_enter_final(message: Message):
     await register_for_final(user_id)
 
     # Инициализация сессии финала
-    from database.db import DB_PATH
+    from db.db import DB_PATH
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("INSERT OR REPLACE INTO final_sessions (user_id, current_ticket_index, is_active) VALUES (?, 0, 1)", (user_id,))
         await db.commit()
@@ -172,7 +172,7 @@ async def cmd_my_tickets(message: Message):
 @router.message(F.text == "📊 Лидерборд")
 @router.message(F.text == "📊 Лидерборд финалистов")
 async def cmd_leaderboard(message: Message):
-    from database.db import DB_PATH
+    from db.db import DB_PATH
     # Проверка, завершен ли розыгрыш
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT ticket_number, user_id, score, total_time FROM final_results WHERE is_mini_quiz = (SELECT MAX(is_mini_quiz) FROM final_results) ORDER BY score DESC, total_time ASC LIMIT 1") as cursor:
@@ -217,7 +217,7 @@ async def cmd_support(message: Message):
 
 @router.message(F.text == "🔄 Обновить данные")
 async def cmd_refresh(message: Message):
-    from database.db import DB_PATH
+    from db.db import DB_PATH
     # Проверка, завершен ли розыгрыш
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT ticket_number, user_id, score, total_time FROM final_results WHERE is_mini_quiz = (SELECT MAX(is_mini_quiz) FROM final_results) ORDER BY score DESC, total_time ASC LIMIT 1") as cursor:

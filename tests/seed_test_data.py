@@ -1,7 +1,7 @@
 import asyncio
 import aiosqlite
 import random
-from database.db import DB_PATH, init_db
+from db.db import DB_PATH, init_db
 
 async def seed_data(target_real_count=3495):
     await init_db()

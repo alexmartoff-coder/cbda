@@ -2,7 +2,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from handlers.quiz_states import QuizStates
-from database.db import get_quiz_session, update_quiz_score, update_quiz_question, finish_quiz_session, check_and_trigger_closure, add_user, update_ticket_result
+from db.db import get_quiz_session, update_quiz_score, update_quiz_question, finish_quiz_session, check_and_trigger_closure, add_user, update_ticket_result
 from keyboards.menu import get_main_menu_keyboard, get_start_quiz_keyboard
 from utils.generator import generate_questions
 import asyncio
@@ -99,13 +99,13 @@ async def quiz_timer_logic(bot: Bot, state: FSMContext, user_id: int, q_idx: int
 @router.message(F.text.contains("🚀 Пройти квиз"))
 async def cmd_resume_pending_quiz(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    from database.db import DB_PATH
+    from db.db import DB_PATH
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT ticket_number FROM tickets WHERE user_id = ? AND status = 'pending' LIMIT 1", (user_id,)) as c:
             row = await c.fetchone()
             if row:
                 ticket_num = row[0]
-                from database.db import set_quiz_session
+                from db.db import set_quiz_session
                 await set_quiz_session(user_id, ticket_num, score=0, current_question=0, is_active=True)
                 await message.answer(
                     f"🎫 Начинаем квиз для заявки №{ticket_num:05d}.\n\n"
@@ -130,7 +130,7 @@ async def start_quiz_handler(callback: CallbackQuery, state: FSMContext):
     loading = await callback.message.answer("🔄 Подбираем вопросы...")
 
     try:
-        from database.db import mark_questions_as_seen
+        from db.db import mark_questions_as_seen
         questions = await generate_questions(user_id, 10)
         await state.update_data(current_questions=questions)
         seen_ids = [q["pool_index"] for q in questions]
@@ -192,7 +192,7 @@ async def finish_quiz_logic(bot: Bot, state: FSMContext, user_id: int):
     score = session[0] if session else 0
     t_num = session[3] if session else None
 
-    from database.db import DB_PATH
+    from db.db import DB_PATH
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT type FROM tickets WHERE ticket_number = ?", (t_num,)) as cursor:
             row = await cursor.fetchone()

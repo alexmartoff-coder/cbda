@@ -2,7 +2,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
-from database.db import init_db
+from db.db import init_db
 from handlers import base, quiz, admin, payment, final_quiz
 
 # Логирование
