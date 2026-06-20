@@ -2,7 +2,11 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from handlers.quiz_states import QuizStates
-from database.db import get_quiz_session, update_quiz_score, update_quiz_question, finish_quiz_session, check_and_trigger_closure, add_user, update_ticket_result
+from database.db import (
+    get_quiz_session, update_quiz_score, update_quiz_question,
+    finish_quiz_session, check_and_trigger_closure, add_user,
+    update_ticket_result, issue_bonus_tickets
+)
 from keyboards.menu import get_main_menu_keyboard, get_start_quiz_keyboard
 from utils.generator import generate_questions
 import asyncio
@@ -45,7 +49,7 @@ async def safe_send_question(bot: Bot, state: FSMContext, user_id: int, q_idx: i
 
     question = questions[q_idx]
     q_text = html.escape(question['question'])
-    text = f"❓ <b>Вопрос {q_idx + 1}/10</b>\n\n{q_text}\n\n⏱ У тебя 20 секунд!"
+    text = f"❓ <b>Вопрос {q_idx + 1}/10</b>\n\n{q_text}\n\n⏱ У тебя 30 секунд!"
 
     try:
         msg = await bot.send_message(
@@ -68,7 +72,7 @@ async def safe_send_question(bot: Bot, state: FSMContext, user_id: int, q_idx: i
 
 async def quiz_timer_logic(bot: Bot, state: FSMContext, user_id: int, q_idx: int, msg_id: int):
     try:
-        await asyncio.sleep(20)
+        await asyncio.sleep(30)
         data = await state.get_data()
         current_state = await state.get_state()
 
@@ -95,27 +99,6 @@ async def quiz_timer_logic(bot: Bot, state: FSMContext, user_id: int, q_idx: int
     finally:
         if active_quiz_timers.get(user_id) == asyncio.current_task():
             active_quiz_timers.pop(user_id, None)
-
-@router.message(F.text.contains("🚀 Пройти квиз"))
-async def cmd_resume_pending_quiz(message: Message, state: FSMContext):
-    user_id = message.from_user.id
-    from database.db import DB_PATH
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT ticket_number FROM tickets WHERE user_id = ? AND status = 'pending' LIMIT 1", (user_id,)) as c:
-            row = await c.fetchone()
-            if row:
-                ticket_num = row[0]
-                from database.db import set_quiz_session
-                await set_quiz_session(user_id, ticket_num, score=0, current_question=0, is_active=True)
-                await message.answer(
-                    f"🎫 Начинаем квиз для заявки №{ticket_num:05d}.\n\n"
-                    "⚠️ <b>Внимание!</b> Выбирайте время и место, чтобы интернет был устойчивым и звонки не отвлекали. "
-                    "Отсутствие ответа или закрытие приложения будет оцениваться как проигрыш в вопросе.",
-                    reply_markup=get_start_quiz_keyboard(),
-                    parse_mode="HTML"
-                )
-            else:
-                await message.answer("У вас нет заявок, ожидающих квиза.")
 
 @router.callback_query(F.data == "start_quiz")
 async def start_quiz_handler(callback: CallbackQuery, state: FSMContext):
@@ -180,7 +163,7 @@ async def process_quiz_answer(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.answer(res_text, parse_mode="HTML")
     await update_quiz_question(user_id, q_idx_in_cb + 1)
-    await asyncio.sleep(1.5)
+    await asyncio.sleep(3)
     await safe_send_question(callback.bot, state, user_id, q_idx_in_cb + 1)
 
 async def finish_quiz_logic(bot: Bot, state: FSMContext, user_id: int):
@@ -192,38 +175,41 @@ async def finish_quiz_logic(bot: Bot, state: FSMContext, user_id: int):
     score = session[0] if session else 0
     t_num = session[3] if session else None
 
-    from database.db import DB_PATH
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT type FROM tickets WHERE ticket_number = ?", (t_num,)) as cursor:
-            row = await cursor.fetchone()
-            t_type = row[0] if row else "base"
+    bonus_count = 0
+    if score == 10:
+        bonus_count = 3
+    elif score == 9:
+        bonus_count = 2
+    elif score == 8:
+        bonus_count = 1
 
-    threshold = 9 if t_type == "base" else 8
-    is_finalist = score >= threshold
+    bonus_tickets = await issue_bonus_tickets(user_id, bonus_count)
 
-    if is_finalist:
-        status = "finalist"
-        msg = (
-            f"🎉 <b>Поздравляем!</b>\n"
-            f"Заявка №{t_num:05d} прошла в Финал!\n"
-            f"Результат: <b>{score}/10</b>"
-        )
-    else:
-        status = "failed"
-        msg = (
-            f"К сожалению, заявка №{t_num:05d} не прошла в Финал (<b>{score}/10</b>).\n\n"
-            "Вы можете Поддержать конкурс и получить дополнительную попытку (99 ₽)"
-        )
-
-    await update_ticket_result(t_num, status, score)
+    await update_ticket_result(t_num, "completed", score)
     await finish_quiz_session(user_id)
     await state.clear()
 
+    bonus_text = ""
+    if bonus_count > 0:
+        nums_str = ", ".join([f"№{n:05d}" for n in bonus_tickets])
+        bonus_text = f"\n🎁 Тебе начислено <b>{bonus_count} бонусных билета</b>: {nums_str}"
+    else:
+        bonus_text = "\nК сожалению, бонусных билетов в этот раз нет."
+
+    msg = (
+        f"🏁 <b>Квиз завершён!</b>\n"
+        f"Твой результат: <b>{score}/10</b>\n"
+        f"Базовый билет: №{t_num:05d}"
+        f"{bonus_text}\n\n"
+        f"Всего билетов за эту попытку: <b>{1 + bonus_count}</b>"
+    )
+
+    await check_and_trigger_closure(bot)
     kb, progress = await get_main_menu_keyboard(user_id)
+
     await bot.send_message(
         chat_id=user_id,
         text=f"{msg}\n\n{progress}",
         reply_markup=kb,
         parse_mode="HTML"
     )
-    await check_and_trigger_closure(bot)
