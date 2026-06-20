@@ -2,7 +2,7 @@ import random
 import logging
 from data.questions_pool import QUESTIONS_POOL
 
-from database.db import get_user_seen_question_ids, clear_user_seen_questions
+from db.db import get_user_seen_question_ids, clear_user_seen_questions
 
 async def generate_questions(user_id, amount=10):
     # === FIXED: РАНДОМИЗАЦИЯ КВИЗА И ЗАЩИТА ОТ ПОВТОРОВ ===
