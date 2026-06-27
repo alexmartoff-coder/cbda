@@ -2,8 +2,9 @@ import aiosqlite
 import os
 from datetime import datetime
 from aiogram import Bot
-from config import TICKET_LIMIT, CHANNEL_ID, MAX_TICKET_NUMBER
+from config import TICKET_LIMIT, CHANNEL_ID, MAX_TICKET_NUMBER, CONTEST_DEADLINE
 from utils.time_utils import get_moscow_now
+import asyncio
 
 DB_PATH = "database/bot_database.db"
 
@@ -146,15 +147,15 @@ async def init_db():
 
         await db.commit()
 
-async def issue_ticket(user_id, ticket_type):
+async def issue_ticket(user_id, ticket_type, status='pending'):
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT ticket_number FROM available_tickets ORDER BY RANDOM() LIMIT 1") as cursor:
+        async with db.execute("SELECT ticket_number FROM available_tickets ORDER BY ticket_number ASC LIMIT 1") as cursor:
             row = await cursor.fetchone()
             if row:
                 ticket_num = row[0]
                 await db.execute("DELETE FROM available_tickets WHERE ticket_number = ?", (ticket_num,))
-                await db.execute("INSERT INTO tickets (user_id, ticket_number, type, status) VALUES (?, ?, ?, 'pending')",
-                                 (user_id, ticket_num, ticket_type))
+                await db.execute("INSERT INTO tickets (user_id, ticket_number, type, status) VALUES (?, ?, ?, ?)",
+                                 (user_id, ticket_num, ticket_type, status))
                 await db.commit()
                 return ticket_num
     return None
@@ -231,12 +232,11 @@ async def get_leaderboard(limit=20):
             SELECT
                 u.username,
                 u.full_name,
-                COUNT(t.id) as finalist_count
+                COUNT(t.id) as ticket_count
             FROM users u
             JOIN tickets t ON u.user_id = t.user_id
-            WHERE t.status = 'finalist'
             GROUP BY u.user_id
-            ORDER BY finalist_count DESC
+            ORDER BY ticket_count DESC
             LIMIT ?
         """, (limit,)) as cursor:
             return await cursor.fetchall()
@@ -245,7 +245,7 @@ async def is_collection_closed():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT value FROM settings WHERE key = 'is_closed'") as cursor:
             row = await cursor.fetchone()
-            return row[0] == '1'
+            return (row[0] == '1') if row else False
 
 async def close_collection():
     async with aiosqlite.connect(DB_PATH) as db:
@@ -316,44 +316,48 @@ async def get_all_finalists():
             return [r[0] for r in rows]
 
 async def check_and_trigger_closure(bot: Bot):
-    paid_total = await get_paid_tickets_count()
+    total_tickets = await get_total_tickets_count()
+    deadline = datetime.strptime(CONTEST_DEADLINE, "%Y-%m-%d %H:%M:%S")
+    is_deadline_passed = get_moscow_now().replace(tzinfo=None) > deadline
 
-    # Цель - собрать 3500 реальных платных заявок
-    if paid_total >= TICKET_LIMIT and not await is_collection_closed():
+    if (total_tickets >= TICKET_LIMIT or is_deadline_passed) and not await is_collection_closed():
         await close_collection()
 
-        # Рассылка ВСЕМ пользователям (в фоне)
-        from db.db_final import get_final_times
-        times = await get_final_times()
-        if times:
-            async def broadcast_closure_to_all():
-                from keyboards.menu import get_main_menu_keyboard
-                now = get_moscow_now().replace(tzinfo=None)
-                remaining = times["reg_start"] - now
-                rem_str = str(remaining).split(".")[0]
-                push_text = f"📢 <b>Приём заявок завершён</b>\n⏳ До Финала: <b>{rem_str}</b>"
+        async def broadcast_closure_to_all():
+            push_text = (
+                "🎉 Сбор билетов завершён досрочно!\n\n"
+                "Мы набрали 2500+ билетов. Спасибо всем участникам!\n\n"
+                "Розыгрыш iPhone 17 состоится в ближайшее время в прямом эфире в канале @mozgo_boy.\n\n"
+                "Следи за обновлениями!"
+            )
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute("SELECT user_id FROM users") as cursor:
+                    all_users = await cursor.fetchall()
 
-                async with aiosqlite.connect(DB_PATH) as db:
-                    async with db.execute("SELECT user_id FROM users") as cursor:
-                        all_users = await cursor.fetchall()
+            for (uid,) in all_users:
+                try:
+                    await bot.send_message(uid, push_text)
+                    await asyncio.sleep(0.05)
+                except:
+                    pass
 
-                for (uid,) in all_users:
-                    try:
-                        kb, _ = await get_main_menu_keyboard(uid)
-                        await bot.send_message(uid, push_text, parse_mode="HTML", reply_markup=kb)
-                        await asyncio.sleep(0.05) # Rate limiting
-                    except:
-                        pass
-            import asyncio
-            asyncio.create_task(broadcast_closure_to_all())
+        asyncio.create_task(broadcast_closure_to_all())
 
         try:
-            text = (
-                "🔥 СБОР ЗАЯВОК ЗАВЕРШЁН!\n\n"
-                "Мы достигли лимита в 3500 заявок.\n"
-                "Спасибо всем, кто принял участие!\n\n"
-                "Отборочный этап завершен. Скоро начнется Финал."
-            )
+            if total_tickets >= TICKET_LIMIT:
+                text = (
+                    "🔥 СБОР БИЛЕТОВ ЗАВЕРШЁН!\n\n"
+                    "Мы достигли лимита в 2500 билетов раньше срока.\n"
+                    "Спасибо всем, кто принял участие!\n\n"
+                    "Дата и время прямого розыгрыша будет объявлена в ближайшие часы."
+                )
+            else:
+                text = (
+                    "🔥 СБОР БИЛЕТОВ ЗАВЕРШЁН!\n\n"
+                    "Приём билетов окончен по достижению даты 10 апреля.\n"
+                    "Спасибо всем, кто принял участие!\n\n"
+                    "Дата и время прямого розыгрыша будет объявлена в ближайшие часы."
+                )
             await bot.send_message(chat_id=CHANNEL_ID, text=text)
         except Exception as e:
             import logging
