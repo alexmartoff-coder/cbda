@@ -146,15 +146,15 @@ async def init_db():
 
         await db.commit()
 
-async def issue_ticket(user_id, ticket_type):
+async def issue_ticket(user_id, ticket_type, status='pending'):
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT ticket_number FROM available_tickets ORDER BY RANDOM() LIMIT 1") as cursor:
+        async with db.execute("SELECT ticket_number FROM available_tickets ORDER BY ticket_number ASC LIMIT 1") as cursor:
             row = await cursor.fetchone()
             if row:
                 ticket_num = row[0]
                 await db.execute("DELETE FROM available_tickets WHERE ticket_number = ?", (ticket_num,))
-                await db.execute("INSERT INTO tickets (user_id, ticket_number, type, status) VALUES (?, ?, ?, 'pending')",
-                                 (user_id, ticket_num, ticket_type))
+                await db.execute("INSERT INTO tickets (user_id, ticket_number, type, status) VALUES (?, ?, ?, ?)",
+                                 (user_id, ticket_num, ticket_type, status))
                 await db.commit()
                 return ticket_num
     return None
@@ -245,7 +245,9 @@ async def is_collection_closed():
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT value FROM settings WHERE key = 'is_closed'") as cursor:
             row = await cursor.fetchone()
-            return row[0] == '1'
+            if row:
+                return row[0] == '1'
+            return False
 
 async def close_collection():
     async with aiosqlite.connect(DB_PATH) as db:
@@ -316,45 +318,69 @@ async def get_all_finalists():
             return [r[0] for r in rows]
 
 async def check_and_trigger_closure(bot: Bot):
-    paid_total = await get_paid_tickets_count()
+    total_tickets = await get_total_tickets_count()
+    is_closed = await is_collection_closed()
 
-    # Цель - собрать 3500 реальных платных заявок
-    if paid_total >= TICKET_LIMIT and not await is_collection_closed():
+    from config import CONTEST_DEADLINE
+    deadline = datetime.strptime(CONTEST_DEADLINE, "%Y-%m-%d %H:%M:%S")
+    now = get_moscow_now().replace(tzinfo=None)
+
+    if (total_tickets >= TICKET_LIMIT or now >= deadline) and not is_closed:
         await close_collection()
 
-        # Рассылка ВСЕМ пользователям (в фоне)
-        from db.db_final import get_final_times
-        times = await get_final_times()
-        if times:
-            async def broadcast_closure_to_all():
-                from keyboards.menu import get_main_menu_keyboard
-                now = get_moscow_now().replace(tzinfo=None)
-                remaining = times["reg_start"] - now
-                rem_str = str(remaining).split(".")[0]
-                push_text = f"📢 <b>Приём заявок завершён</b>\n⏳ До Финала: <b>{rem_str}</b>"
+        reason = "limit" if total_tickets >= TICKET_LIMIT else "deadline"
 
-                async with aiosqlite.connect(DB_PATH) as db:
-                    async with db.execute("SELECT user_id FROM users") as cursor:
-                        all_users = await cursor.fetchall()
+        async def broadcast_closure_to_all(reason_type):
+            if reason_type == "limit":
+                push_text = (
+                    "🎉 Сбор билетов завершён досрочно!\n\n"
+                    "Мы набрали 2500+ билетов. Спасибо всем участникам!\n\n"
+                    "Розыгрыш iPhone 17 состоится в ближайшее время в прямом эфире в канале @mozgo_boy.\n\n"
+                    "Следи за обновлениями!"
+                )
+            else:
+                push_text = (
+                    "Приём билетов окончен! Срок участия в конкурсе истёк.\n\n"
+                    "Розыгрыш iPhone 17 состоится в ближайшее время в прямом эфире в канале @mozgo_boy.\n\n"
+                    "Следи за обновлениями!"
+                )
 
-                for (uid,) in all_users:
-                    try:
-                        kb, _ = await get_main_menu_keyboard(uid)
-                        await bot.send_message(uid, push_text, parse_mode="HTML", reply_markup=kb)
-                        await asyncio.sleep(0.05) # Rate limiting
-                    except:
-                        pass
-            import asyncio
-            asyncio.create_task(broadcast_closure_to_all())
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute("SELECT user_id FROM users") as cursor:
+                    all_users = await cursor.fetchall()
+
+            for (uid,) in all_users:
+                try:
+                    await bot.send_message(uid, push_text)
+                    await asyncio.sleep(0.05)
+                except:
+                    pass
+
+        import asyncio
+        asyncio.create_task(broadcast_closure_to_all(reason))
 
         try:
-            text = (
-                "🔥 СБОР ЗАЯВОК ЗАВЕРШЁН!\n\n"
-                "Мы достигли лимита в 3500 заявок.\n"
-                "Спасибо всем, кто принял участие!\n\n"
-                "Отборочный этап завершен. Скоро начнется Финал."
-            )
+            if reason == "limit":
+                text = (
+                    "🔥 СБОР БИЛЕТОВ ЗАВЕРШЁН!\n\n"
+                    "Мы достигли лимита в 2500 билетов раньше срока.\n"
+                    "Спасибо всем, кто принял участие!\n\n"
+                    "Дата и время прямого розыгрыша будет объявлена в ближайшие часы."
+                )
+            else:
+                text = (
+                    "🔥 ПРИЁМ БИЛЕТОВ ЗАВЕРШЁН!\n\n"
+                    "Срок участия в конкурсе истёк.\n"
+                    "Спасибо всем, кто принял участие!\n\n"
+                    "Дата и время прямого розыгрыша будет объявлена в ближайшие часы."
+                )
             await bot.send_message(chat_id=CHANNEL_ID, text=text)
         except Exception as e:
             import logging
             logging.error(f"Error sending closure message to channel: {e}")
+
+async def get_final_times():
+    return None
+
+async def is_final_active():
+    return False
