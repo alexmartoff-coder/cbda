@@ -15,16 +15,9 @@ async def get_all_users_data():
                 u.username,
                 u.full_name,
                 (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.user_id) as total_tickets,
-                (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.user_id AND t.type = 'paid') as paid_tickets,
-                (SELECT score FROM quiz_sessions qs WHERE qs.user_id = u.user_id) as quiz_score,
-                u.created_at,
-                (
-                    SELECT MAX(last_activity) FROM (
-                        SELECT created_at as last_activity FROM tickets WHERE user_id = u.user_id
-                        UNION
-                        SELECT u.created_at as last_activity
-                    )
-                ) as last_activity
+                (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.user_id AND t.type = 'base') as base_tickets,
+                (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.user_id AND t.type = 'bonus') as bonus_tickets,
+                u.created_at
             FROM users u
         """
         async with db.execute(query) as cursor:
