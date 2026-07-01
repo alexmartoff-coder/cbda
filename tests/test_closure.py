@@ -6,7 +6,7 @@ from db.db import check_and_trigger_closure
 from config import TICKET_LIMIT
 
 class TestClosure(unittest.IsolatedAsyncioTestCase):
-    @patch('db.db.get_paid_tickets_count')
+    @patch('db.db.get_total_tickets_count')
     @patch('db.db.is_collection_closed')
     @patch('db.db.close_collection')
     async def test_closure_by_tickets(self, mock_close, mock_is_closed, mock_count):
@@ -19,17 +19,26 @@ class TestClosure(unittest.IsolatedAsyncioTestCase):
         await check_and_trigger_closure(bot)
 
         mock_close.assert_called_once()
-        bot.send_message.assert_called_once()
-        args, kwargs = bot.send_message.call_args
-        self.assertIn("СБОР ЗАЯВОК ЗАВЕРШЁН", kwargs['text'])
+        # It sends broadcast to users and channel.
+        # check_and_trigger_closure has 1 direct call to channel and a background task.
+        # We can at least check the channel message call.
+        self.assertTrue(bot.send_message.called)
 
-    @patch('db.db.get_paid_tickets_count')
+        # Search for channel message
+        found_channel_msg = False
+        for call in bot.send_message.call_args_list:
+            args, kwargs = call
+            if "СБОР БИЛЕТОВ ЗАВЕРШЁН" in kwargs.get('text', ''):
+                found_channel_msg = True
+                break
+        self.assertTrue(found_channel_msg)
+
+    @patch('db.db.get_total_tickets_count')
     @patch('db.db.is_collection_closed')
     @patch('db.db.close_collection')
     async def test_no_closure(self, mock_close, mock_is_closed, mock_count):
-        # Setup: less than TICKET_LIMIT tickets (including fake ones), not closed
-        from config import INITIAL_FAKE_TICKETS
-        mock_count.return_value = TICKET_LIMIT - INITIAL_FAKE_TICKETS - 1
+        # Setup: less than TICKET_LIMIT tickets
+        mock_count.return_value = TICKET_LIMIT - 1
         mock_is_closed.return_value = False
 
         bot = AsyncMock()
@@ -39,12 +48,10 @@ class TestClosure(unittest.IsolatedAsyncioTestCase):
         mock_close.assert_not_called()
         bot.send_message.assert_not_called()
 
-    @patch('db.db.get_paid_tickets_count')
     @patch('db.db.is_collection_closed')
     @patch('db.db.close_collection')
-    async def test_already_closed(self, mock_close, mock_is_closed, mock_count):
-        # Setup: TICKET_LIMIT tickets, already closed
-        mock_count.return_value = TICKET_LIMIT
+    async def test_already_closed(self, mock_close, mock_is_closed):
+        # Setup: already closed
         mock_is_closed.return_value = True
 
         bot = AsyncMock()
