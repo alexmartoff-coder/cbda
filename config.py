@@ -1,15 +1,17 @@
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")
 
-CHANNEL_ID = "@quizzy_best"
+CHANNEL_ID = "@mozgo_boy"
 YOOKASSA_PROVIDER_TOKEN = os.getenv("YOOKASSA_PROVIDER_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "228592391"))
 
-TICKET_LIMIT = 3500
+TICKET_LIMIT = 2500
+CONTEST_DEADLINE = datetime(2026, 4, 10, 23, 59, 59)
 INITIAL_FAKE_TICKETS = 741
 MAX_TICKET_NUMBER = 50000
 
