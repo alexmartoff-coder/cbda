@@ -1,5 +1,5 @@
 import aiosqlite
-from database.db import DB_PATH
+from db.db import DB_PATH
 
 async def get_preliminary_winner():
     async with aiosqlite.connect(DB_PATH) as db:
@@ -27,7 +27,7 @@ async def check_for_ties():
             return rows if len(rows) > 1 else None
 
 async def setup_mini_quiz(bot, tickets):
-    from database.db_final import get_final_times
+    from db.db_final import get_final_times
     times = await get_final_times()
     # Мини-квиз в 21:30
 

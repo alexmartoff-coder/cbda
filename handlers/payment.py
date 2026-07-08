@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message, PreCheckoutQuery, LabeledPrice
-from database.db import add_user, issue_ticket, set_quiz_session, is_collection_closed, check_and_trigger_closure, log_payment
+from db.db import add_user, issue_ticket, set_quiz_session, is_collection_closed, check_and_trigger_closure, log_payment
 from keyboards.menu import get_start_quiz_keyboard
 import config
 import logging
@@ -11,7 +11,7 @@ payment_router = Router(name="payment_router")
 async def start_free_attempt(message: Message):
     user_id = message.from_user.id
 
-    from database.db import has_accepted_rules
+    from db.db import has_accepted_rules
     if not await has_accepted_rules(user_id):
         await message.answer("Пожалуйста, примите правила конкурса в главном меню (/start) перед участием.")
         return
@@ -20,7 +20,7 @@ async def start_free_attempt(message: Message):
         await message.answer("🎉 Приём заявок завершён!")
         return
 
-    from database.db import has_user_used_free_attempt
+    from db.db import has_user_used_free_attempt
     if await has_user_used_free_attempt(user_id):
         await message.answer("Вы уже использовали свою бесплатную попытку.")
         return
@@ -40,7 +40,7 @@ async def start_free_attempt(message: Message):
 
 @payment_router.message(F.text == "💰 Поддержать (99 ₽)")
 async def start_payment(message: Message):
-    from database.db import has_accepted_rules
+    from db.db import has_accepted_rules
     if not await has_accepted_rules(message.from_user.id):
         await message.answer("Пожалуйста, примите правила конкурса в главном меню (/start) перед участием.")
         return
