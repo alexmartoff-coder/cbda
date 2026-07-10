@@ -3,10 +3,19 @@ import logging
 from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from db.db import init_db
-from handlers import base, quiz, admin, payment, final_quiz
+from handlers import base, quiz, admin, payment
+from db.db import check_and_trigger_closure
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
+
+async def scheduler(bot: Bot):
+    while True:
+        try:
+            await check_and_trigger_closure(bot)
+        except Exception as e:
+            logging.error(f"Scheduler error: {e}")
+        await asyncio.sleep(3600) # Check every hour
 
 async def main():
     # Инициализация БД
@@ -19,14 +28,12 @@ async def main():
     from utils.state_helper import set_dp
     set_dp(dp)
 
-    # Запуск планировщика задач
-    from handlers.final_quiz import start_schedulers
-    asyncio.create_task(start_schedulers(bot))
+    # Запуск планировщика
+    asyncio.create_task(scheduler(bot))
 
     # Регистрируем роутеры
     dp.include_router(payment.payment_router)
     dp.include_router(admin.router)
-    dp.include_router(final_quiz.router)
     dp.include_router(base.router)
     dp.include_router(quiz.router)
 
