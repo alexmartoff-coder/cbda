@@ -1,12 +1,6 @@
 import aiosqlite
 from db.db import DB_PATH
 
-async def get_total_users_count():
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT COUNT(*) FROM users") as cursor:
-            row = await cursor.fetchone()
-            return row[0]
-
 async def get_all_users_data():
     async with aiosqlite.connect(DB_PATH) as db:
         query = """
@@ -14,18 +8,15 @@ async def get_all_users_data():
                 u.user_id,
                 u.username,
                 u.full_name,
-                (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.user_id) as total_tickets,
-                (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.user_id AND t.type = 'paid') as paid_tickets,
-                (SELECT score FROM quiz_sessions qs WHERE qs.user_id = u.user_id) as quiz_score,
+                COUNT(t.id) as total_tickets,
+                SUM(CASE WHEN t.type = 'paid' THEN 1 ELSE 0 END) as paid_tickets,
+                MAX(t.score) as max_score,
                 u.created_at,
-                (
-                    SELECT MAX(last_activity) FROM (
-                        SELECT created_at as last_activity FROM tickets WHERE user_id = u.user_id
-                        UNION
-                        SELECT u.created_at as last_activity
-                    )
-                ) as last_activity
+                MAX(t.created_at) as last_ticket_at
             FROM users u
+            LEFT JOIN tickets t ON u.user_id = t.user_id
+            GROUP BY u.user_id
+            ORDER BY total_tickets DESC
         """
         async with db.execute(query) as cursor:
             return await cursor.fetchall()
