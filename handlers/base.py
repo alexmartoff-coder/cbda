@@ -1,13 +1,12 @@
-from db.db import (
-    add_user, get_leaderboard, is_collection_closed, check_and_trigger_closure,
-    has_user_used_free_attempt, get_user_applications, issue_ticket, set_quiz_session,
-    has_accepted_rules, mark_rules_accepted
-)
 import aiosqlite
-from keyboards.menu import get_main_menu_keyboard, get_start_quiz_keyboard, get_rules_agreement_keyboard
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart
+from db.db import (
+    add_user, is_collection_closed, check_and_trigger_closure,
+    has_accepted_rules, mark_rules_accepted, get_user_applications, get_leaderboard
+)
+from keyboards.menu import get_main_menu_keyboard, get_rules_agreement_keyboard
 
 router = Router()
 
@@ -19,32 +18,28 @@ async def cmd_start(message: Message):
 
     if not await has_accepted_rules(user_id):
         agreement_text = (
-            "Добро пожаловать в интеллектуальный конкурс «iPhone 17 PRO 256 Гб»!\n\n"
+            "Добро пожаловать в интеллектуальный конкурс «iPhone 17»! 📱\n\n"
             "Для участия вам необходимо ознакомиться с правилами.\n\n"
             "«Я ознакомлен с <a href='https://cbda.ru/rules/base'>правилами конкурса</a> и согласен с их условиями, "
             "включая обработку моих данных (Telegram ID, username, результаты) в целях проведения конкурса. "
             "Данные не являются персональными по 152-ФЗ»."
         )
-        kb, progress = await get_main_menu_keyboard(user_id)
         await message.answer(
             agreement_text,
             reply_markup=get_rules_agreement_keyboard(),
             parse_mode="HTML",
             disable_web_page_preview=True
         )
-        await message.answer(f"{progress}\n\nИспользуйте меню для навигации.", reply_markup=kb, parse_mode="HTML")
         return
 
     kb, progress = await get_main_menu_keyboard(user_id)
-
-    await message.answer(
-        f"<b>Добро пожаловать в интеллектуальный конкурс «iPhone 17 PRO 256 Гб»!</b>\n\n"
-        "Каждый участник получает 1 бесплатную заявку на участие.\n"
-        "Вы также можете поддержать конкурс и получить дополнительную попытку (99 ₽).\n\n"
-        f"{progress}",
-        reply_markup=kb,
-        parse_mode="HTML"
+    welcome_text = (
+        "<b>Добро пожаловать в интеллектуальный квиз за iPhone 17!</b> 📱\n\n"
+        "Каждый платёж за 99 ₽ даёт 1 гарантированный базовый билет + возможность получить до +3 бонусных билетов за хороший результат в квизе (8/9/10 правильных ответов).\n\n"
+        "Всего за одну попытку можно получить до 4 билетов!\n\n"
+        f"{progress}"
     )
+    await message.answer(welcome_text, reply_markup=kb, parse_mode="HTML")
 
 @router.callback_query(F.data == "accept_rules")
 async def accept_rules_handler(callback: CallbackQuery):
@@ -53,200 +48,110 @@ async def accept_rules_handler(callback: CallbackQuery):
     await callback.answer("✅ Правила приняты!")
 
     kb, progress = await get_main_menu_keyboard(user_id)
-    await callback.message.answer(
+    welcome_text = (
         "<b>Спасибо! Теперь вы можете участвовать в конкурсе.</b>\n\n"
-        "Каждый участник получает 1 бесплатную заявку на участие.\n"
-        "Вы также можете поддержать конкурс и получить дополнительную попытку (99 ₽).\n\n"
-        f"{progress}",
-        reply_markup=kb,
-        parse_mode="HTML"
+        "<b>Добро пожаловать в интеллектуальный квиз за iPhone 17!</b> 📱\n\n"
+        "Каждый платёж за 99 ₽ даёт 1 гарантированный базовый билет + возможность получить до +3 бонусных билетов за хороший результат в квизе (8/9/10 правильных ответов).\n\n"
+        "Всего за одну попытку можно получить до 4 билетов!\n\n"
+        f"{progress}"
     )
+    await callback.message.answer(welcome_text, reply_markup=kb, parse_mode="HTML")
     try:
         await callback.message.delete()
     except:
         pass
 
-
-@router.message(F.text == "🔥 Начать мини-квиз")
-async def cmd_start_mini_quiz(message: Message):
-    user_id = message.from_user.id
-    from db.db_winner import get_user_mini_quiz_tickets
-    tickets = await get_user_mini_quiz_tickets(user_id)
-    if not tickets:
-        await message.answer("У вас нет заявок для мини-квиза.")
-        return
-
-    await message.answer(
-        f"🚀 Начинаем мини-квиз для {len(tickets)} заявок!\n\n"
-        "⚠️ <b>Внимание!</b> Когда будете проходить квиз, выбирайте время и место, чтобы у вас был устойчивый интернет и входящие звонки не мешали прохождению квиза. "
-        "При закрытии окна или выходе из приложения отсутствие ответов будет оцениваться как проигрыш.",
-        parse_mode="HTML"
-    )
-    from handlers.final_quiz import start_final_quiz_for_ticket
-    from utils.state_helper import get_state
-    state = await get_state(message.bot, user_id)
-    await start_final_quiz_for_ticket(message.bot, user_id, tickets[0], q_count=5, is_mini=True, state=state)
-
-@router.message(F.text == "🏆 Войти в Финал")
-async def cmd_enter_final(message: Message):
-    user_id = message.from_user.id
-    from db.db_final import is_final_registration_open, has_user_registered_for_final, get_user_finalist_tickets, register_for_final
-    import aiosqlite
-
-    if not await is_final_registration_open():
-        await message.answer("Регистрация в Финал сейчас закрыта.")
-        return
-
-    if await has_user_registered_for_final(user_id):
-        await message.answer("Вы уже вошли в Финал.")
-        return
-
-    tickets = await get_user_finalist_tickets(user_id)
-    if not tickets:
-        await message.answer("У вас нет финалистских заявок.")
-        return
-
-    await register_for_final(user_id)
-
-    # Инициализация сессии финала
-    from db.db import DB_PATH
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("INSERT OR REPLACE INTO final_sessions (user_id, current_ticket_index, is_active) VALUES (?, 0, 1)", (user_id,))
-        await db.commit()
-
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Начать финальный квиз", callback_data=f"start_next_final_{tickets[0]}")]
-    ])
-
-    await message.answer(
-        f"✅ Вы успешно вошли в Финал!\n"
-        f"Всего ваших заявок: {len(tickets)}\n\n"
-        "⚠️ <b>Внимание!</b> Когда будете проходить квиз выбирайте время и место чтобы у вас был устойчивый интернет и входящие звонки не мешали прохождению квиза. "
-        "При закрытии окна или выхода из приложения отсутствие ответов будет оцениваться как проигрыш.\n\n"
-        f"Нажмите на кнопку ниже, чтобы начать прохождение для заявки №{tickets[0]:05d}.",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
-
+@router.message(F.text == "📜 Правила розыгрыша")
 @router.message(F.text == "❓ Правила конкурса")
 async def cmd_rules(message: Message):
     rules_html = (
-        "<b>📌 Приложение к правилам для конкурса «iPhone 17 PRO 256 Гб»</b>\n\n"
-        "Интеллектуальный конкурс «iPhone 17 PRO 256 Гб»\n"
+        "<b>📌 Правила интеллектуального квиза «iPhone 17»</b>\n\n"
+        "Интеллектуальный квиз «iPhone 17»\n"
         "<b>Тематика квиза:</b> компания Apple, её устройства, операционные системы, технологии, история.\n"
-        "<b>Приз:</b> iPhone 17 PRO 256 Гб (один экземпляр).\n"
-        "<b>Количество платных заявок для завершения Отборочного Этапа:</b> 3500 (три тысячи пятьсот). Бесплатные заявки не влияют на окончание приёма.\n"
-        "<b>Старт Отборочного этапа:</b> 29 мая 2026 г. в 12:00 МСК.\n"
-        "<b>Окончание Отборочного Этапа:</b> автоматически при достижении 3500 платных заявок.\n"
-        "<b>Финал:</b> следующий календарный день после завершения Отборочного этапа в 19:00 по московскому времени.\n\n"
+        "<b>Приз:</b> iPhone 17 (один экземпляр).\n"
+        "<b>Стоимость попытки:</b> 99 ₽.\n"
+        "Каждый платёж даёт 1 гарантированный базовый билет + возможность получить до +3 бонусных билетов за хороший результат в квизе (8/9/10 правильных ответов).\n\n"
+        "<b>Количество билетов для завершения:</b> 2500.\n"
+        "<b>Окончание приёма билетов:</b> автоматически при достижении 2500 билетов или 10 апреля 2026.\n"
+        "<b>Розыгрыш:</b> проводится честно среди всех выданных билетов. Победитель будет выбран путём https://www.random.org/.\n\n"
         "Все остальные условия — в соответствии с Основными правилами интеллектуальных конкурсов, размещённых по ссылке:\n"
         "https://cbda.ru/rules/base\n\n"
-        "<b>Организатор:</b> Частное лицо ИНН 470102947100. (самозанятый).\n"
         "Участие в конкурсе означает полное согласие с правилами и условиями обработки данных."
     )
     await message.answer(rules_html, parse_mode="HTML", disable_web_page_preview=True)
 
+@router.message(F.text == "🎟️ Мои билеты")
 @router.message(F.text == "👤 Мои заявки")
 async def cmd_my_tickets(message: Message):
-    apps = await get_user_applications(message.from_user.id)
-
-    if not apps:
-        await message.answer("У тебя пока нет заявок. Используй бесплатную попытку в меню!")
-    else:
-        text = "<b>Твои заявки:</b>\n\n"
-        for t_num, status, score in apps:
-            if status == "pending":
-                status_text = "⏳ Ожидает квиза"
-                score_text = ""
-            elif status == "finalist":
-                status_text = "— прошла в Финал! ✅"
-                score_text = f"\nРезультат: {score}/10"
-            else:
-                status_text = "— Не прошла в финал"
-                score_text = f"\nРезультат: {score}/10"
-
-            text += f"🎫 №{t_num:05d} {status_text}{score_text}\n\n"
-        await message.answer(text, parse_mode="HTML")
-
-@router.message(F.text == "📊 Лидерборд")
-@router.message(F.text == "📊 Лидерборд финалистов")
-async def cmd_leaderboard(message: Message):
-    from db.db import DB_PATH
-    # Проверка, завершен ли розыгрыш
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT ticket_number, user_id, score, total_time FROM final_results WHERE is_mini_quiz = (SELECT MAX(is_mini_quiz) FROM final_results) ORDER BY score DESC, total_time ASC LIMIT 1") as cursor:
-            winner = await cursor.fetchone()
-        async with db.execute("SELECT value FROM settings WHERE key = 'results_published'") as cursor:
-            published = await cursor.fetchone()
-
-    if winner and published:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT username, full_name FROM users WHERE user_id = ?", (winner[1],)) as c:
-                u = await c.fetchone()
-                username = "@" + u[0] if (u and u[0]) else (u[1] if u else "Участник")
-
-        minutes = int(winner[3] // 60)
-        seconds = int(winner[3] % 60)
-        time_str = f"{minutes:02d}:{seconds:02d}"
-
-        text = (
-            "🏆 <b>Победитель конкурса определён!</b>\n\n"
-            f"Победитель: {username} (заявка №{winner[0]:05d})\n"
-            f"Результат: {winner[2]}/8, время {time_str}\n"
-            "Приз: iPhone 17 PRO 256 Гб"
-        )
-        await message.answer(text, parse_mode="HTML")
+    user_id = message.from_user.id
+    if not await has_accepted_rules(user_id):
+        await message.answer("Пожалуйста, примите правила конкурса перед просмотром билетов.")
         return
 
+    apps = await get_user_applications(user_id)
+    if not apps:
+        await message.answer("У тебя пока нет билетов. Нажми «🎁 Играть в Квиз за iPhone 17» в меню, чтобы получить первый билет!")
+    else:
+        text = "<b>Твои билеты:</b>\n\n"
+        for t_num, status, score in apps:
+            text += f"🎫 №{t_num:05d} — Участвует в розыгрыше! ✅\n"
+        text += f"\nВсего у тебя билетов: <b>{len(apps)}</b>"
+        await message.answer(text, parse_mode="HTML")
+
+@router.message(F.text == "🏆 Лидерборд")
+@router.message(F.text == "📊 Лидерборд")
+async def cmd_leaderboard(message: Message):
     leaders = await get_leaderboard(limit=20)
     if not leaders:
-        await message.answer("Лидерборд финалистов пока пуст.")
+        await message.answer("Лидерборд пока пуст.")
         return
 
-    text = "🏆 <b>Топ-20 участников по количеству финалистских заявок:</b>\n\n"
-    for i, (username, full_name, finalist_count) in enumerate(leaders, 1):
-        name = username if username else full_name
-        text += f"{i}. {name} — <b>{finalist_count}</b> фин. заявок\n"
+    text = "🏆 <b>Топ-20 участников по количеству билетов:</b>\n\n"
+    for i, (username, full_name, ticket_count) in enumerate(leaders, 1):
+        name = f"@{username}" if username else full_name
+        text += f"{i}. {name} — <b>{ticket_count}</b> билетов\n"
 
     await message.answer(text, parse_mode="HTML")
 
+@router.message(F.text == "❓ Поддержка")
 @router.message(F.text == "📞 Поддержка")
 async def cmd_support(message: Message):
-    await message.answer("По всем вопросам обращайтесь в поддержку бота по электронной почте alexandr@cbda.ru")
+    await message.answer(
+        "📞 <b>Служба поддержки</b>\n\n"
+        "По всем вопросам обращайтесь в поддержку бота по электронной почте: alexandr@cbda.ru",
+        parse_mode="HTML"
+    )
 
-@router.message(F.text == "🔄 Обновить данные")
-async def cmd_refresh(message: Message):
-    from db.db import DB_PATH
-    # Проверка, завершен ли розыгрыш
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT ticket_number, user_id, score, total_time FROM final_results WHERE is_mini_quiz = (SELECT MAX(is_mini_quiz) FROM final_results) ORDER BY score DESC, total_time ASC LIMIT 1") as cursor:
-            winner = await cursor.fetchone()
-        async with db.execute("SELECT value FROM settings WHERE key = 'results_published'") as cursor:
-            published = await cursor.fetchone()
-
-    if winner and published:
-        async with aiosqlite.connect(DB_PATH) as db:
-            async with db.execute("SELECT username, full_name FROM users WHERE user_id = ?", (winner[1],)) as c:
-                u = await c.fetchone()
-                username = "@" + u[0] if (u and u[0]) else (u[1] if u else "Участник")
-
-        minutes = int(winner[3] // 60)
-        seconds = int(winner[3] % 60)
-        time_str = f"{minutes:02d}:{seconds:02d}"
-
-        text = (
-            "🏆 <b>Победитель конкурса определён!</b>\n\n"
-            f"Победитель: {username} (заявка №{winner[0]:05d})\n"
-            f"Результат: {winner[2]}/8, время {time_str}\n"
-            "Приз: iPhone 17 PRO 256 Гб\n\n"
-            "Поздравляем победителя!\n"
-            "<b>ЖДЁМ ВАС НА НОВЫХ КОНКУРСАХ!</b>\n"
-            "Следите за стартом в нашем канале @quizzy_best"
-        )
-        await message.answer(text, parse_mode="HTML")
+@router.message(F.text == "🎁 Играть в Квиз за iPhone 17")
+async def cmd_play(message: Message):
+    user_id = message.from_user.id
+    if not await has_accepted_rules(user_id):
+        await message.answer("Пожалуйста, примите правила конкурса в главном меню перед участием.")
         return
 
-    user_id = message.from_user.id
-    kb, progress = await get_main_menu_keyboard(user_id)
-    await message.answer(f"🔄 Данные обновлены!\n\n{progress}", reply_markup=kb, parse_mode="HTML")
+    if await is_collection_closed():
+        closure_text = (
+            "🎉 Сбор билетов завершён досрочно!\n\n"
+            "Мы набрали 2500+ билетов. Спасибо всем участникам!\n\n"
+            "Розыгрыш iPhone 17 состоится в ближайшее время в прямом эфире в канале @mozgo_boy.\n\n"
+            "Следи за обновлениями!"
+        )
+        await message.answer(closure_text)
+        return
+
+    mechanics_desc = (
+        "Добро пожаловать в интеллектуальный квиз за iPhone 17! 📱\n\n"
+        "Стоимость участия составляет всего 99 ₽. За эту сумму ты гарантированно получаешь 1 базовый билет участника розыгрыша.\n\n"
+        "Но это ещё не всё! Сразу после оплаты у тебя будет возможность пройти увлекательный квиз из 10 вопросов про компанию Apple и получить дополнительные бонусные билеты:\n"
+        "🏆 10 правильных ответов → +3 бонусных билета!\n"
+        "🥈 9 правильных ответов → +2 бонусных билета!\n"
+        "🥉 8 правильных ответов → +1 бонусный билет!\n\n"
+        "Всего за одну попытку можно получить до 4 билетов, что значительно увеличит твои шансы на победу!\n\n"
+        "Нажми на кнопку ниже, чтобы оплатить участие и начать квиз."
+    )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Оплатить 99 ₽", callback_data="pay_99")]
+    ])
+
+    await message.answer(mechanics_desc, reply_markup=kb)
