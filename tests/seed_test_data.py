@@ -3,7 +3,7 @@ import aiosqlite
 import random
 from db.db import DB_PATH, init_db
 
-async def seed_data(target_real_count=3495):
+async def seed_data(target_real_count=2495):
     await init_db()
     async with aiosqlite.connect(DB_PATH) as db:
         # 1. Create a dummy user for the seed tickets
@@ -52,7 +52,7 @@ async def seed_data(target_real_count=3495):
             print(f"Inserted {i + len(batch)}/{needed}...")
             await db.commit()
 
-    print(f"✅ Seeding complete. Display count should now be 3495 (Real paid: {target_real_count}).")
+    print(f"✅ Seeding complete. Display count should now be 2495 (Real paid: {target_real_count}).")
 
 if __name__ == "__main__":
     asyncio.run(seed_data())
