@@ -16,7 +16,7 @@ async def get_all_users_data():
                 u.full_name,
                 (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.user_id) as total_tickets,
                 (SELECT COUNT(*) FROM tickets t WHERE t.user_id = u.user_id AND t.type = 'paid') as paid_tickets,
-                (SELECT score FROM quiz_sessions qs WHERE qs.user_id = u.user_id) as quiz_score,
+                (SELECT MAX(score) FROM tickets t WHERE t.user_id = u.user_id) as quiz_score,
                 u.created_at,
                 (
                     SELECT MAX(last_activity) FROM (
