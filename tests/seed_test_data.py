@@ -3,7 +3,7 @@ import aiosqlite
 import random
 from db.db import DB_PATH, init_db
 
-async def seed_data(target_real_count=3495):
+async def seed_data(target_real_count=2495):
     await init_db()
     async with aiosqlite.connect(DB_PATH) as db:
         # 1. Create a dummy user for the seed tickets
