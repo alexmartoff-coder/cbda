@@ -318,7 +318,7 @@ async def get_all_finalists():
 async def check_and_trigger_closure(bot: Bot):
     paid_total = await get_paid_tickets_count()
 
-    # Цель - собрать 3500 реальных платных заявок
+    # Цель - собрать 2500 реальных платных заявок
     if paid_total >= TICKET_LIMIT and not await is_collection_closed():
         await close_collection()
 
@@ -349,10 +349,10 @@ async def check_and_trigger_closure(bot: Bot):
 
         try:
             text = (
-                "🔥 СБОР ЗАЯВОК ЗАВЕРШЁН!\n\n"
-                "Мы достигли лимита в 3500 заявок.\n"
+                "🔥 СБОР БИЛЕТОВ ЗАВЕРШЁН!\n\n"
+                "Мы достигли лимита в 2500 билетов раньше срока.\n"
                 "Спасибо всем, кто принял участие!\n\n"
-                "Отборочный этап завершен. Скоро начнется Финал."
+                "Дата и время прямого розыгрыша будет объявлена в ближайшие часы."
             )
             await bot.send_message(chat_id=CHANNEL_ID, text=text)
         except Exception as e:
